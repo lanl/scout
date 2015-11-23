@@ -1355,6 +1355,29 @@ TEST(Matcher, VarDecl_Storage) {
   EXPECT_TRUE(matches("void f() { static int X; }", M));
 }
 
+TEST(Matcher, VarDecl_StorageDuration) {
+  std::string T =
+      "void f() { int x; static int y; } int a;";
+
+  EXPECT_TRUE(matches(T, varDecl(hasName("x"), hasAutomaticStorageDuration())));
+  EXPECT_TRUE(
+      notMatches(T, varDecl(hasName("y"), hasAutomaticStorageDuration())));
+  EXPECT_TRUE(
+      notMatches(T, varDecl(hasName("a"), hasAutomaticStorageDuration())));
+
+  EXPECT_TRUE(matches(T, varDecl(hasName("y"), hasStaticStorageDuration())));
+  EXPECT_TRUE(matches(T, varDecl(hasName("a"), hasStaticStorageDuration())));
+  EXPECT_TRUE(notMatches(T, varDecl(hasName("x"), hasStaticStorageDuration())));
+
+  // FIXME: It is really hard to test with thread_local itself because not all
+  // targets support TLS, which causes this to be an error depending on what
+  // platform the test is being run on. We do not have access to the TargetInfo
+  // object to be able to test whether the platform supports TLS or not.
+  EXPECT_TRUE(notMatches(T, varDecl(hasName("x"), hasThreadStorageDuration())));
+  EXPECT_TRUE(notMatches(T, varDecl(hasName("y"), hasThreadStorageDuration())));
+  EXPECT_TRUE(notMatches(T, varDecl(hasName("a"), hasThreadStorageDuration())));
+}
+
 TEST(Matcher, FindsVarDeclInFunctionParameter) {
   EXPECT_TRUE(matches(
       "void f(int i) {}",
@@ -1890,6 +1913,21 @@ TEST(Matcher, MatchesPureMethod) {
   EXPECT_TRUE(notMatches("class X { int f(); };", cxxMethodDecl(isPure())));
 }
 
+TEST(Matcher, MatchesCopyAssignmentOperator) {
+  EXPECT_TRUE(matches("class X { X &operator=(X); };",
+                      cxxMethodDecl(isCopyAssignmentOperator())));
+  EXPECT_TRUE(matches("class X { X &operator=(X &); };",
+                      cxxMethodDecl(isCopyAssignmentOperator())));
+  EXPECT_TRUE(matches("class X { X &operator=(const X &); };",
+                      cxxMethodDecl(isCopyAssignmentOperator())));
+  EXPECT_TRUE(matches("class X { X &operator=(volatile X &); };",
+                      cxxMethodDecl(isCopyAssignmentOperator())));
+  EXPECT_TRUE(matches("class X { X &operator=(const volatile X &); };",
+                      cxxMethodDecl(isCopyAssignmentOperator())));
+  EXPECT_TRUE(notMatches("class X { X &operator=(X &&); };",
+                      cxxMethodDecl(isCopyAssignmentOperator())));
+}
+
 TEST(Matcher, MatchesConstMethod) {
   EXPECT_TRUE(
       matches("struct A { void foo() const; };", cxxMethodDecl(isConst())));
@@ -2357,6 +2395,11 @@ TEST(MatchBinaryOperator, HasLHSAndHasRHS) {
   EXPECT_TRUE(matches("void x() { true || false; }", OperatorTrueFalse));
   EXPECT_TRUE(matches("void x() { true && false; }", OperatorTrueFalse));
   EXPECT_TRUE(notMatches("void x() { false || true; }", OperatorTrueFalse));
+
+  StatementMatcher OperatorIntPointer = arraySubscriptExpr(
+      hasLHS(hasType(isInteger())), hasRHS(hasType(pointsTo(qualType()))));
+  EXPECT_TRUE(matches("void x() { 1[\"abc\"]; }", OperatorIntPointer));
+  EXPECT_TRUE(notMatches("void x() { \"abc\"[1]; }", OperatorIntPointer));
 }
 
 TEST(MatchBinaryOperator, HasEitherOperand) {
@@ -4671,6 +4714,16 @@ public:
                              decl(has(decl(equalsNode(TypedNode)))).bind(""))),
                          *Node, Context)) != nullptr;
   }
+  bool verify(const BoundNodes &Nodes, ASTContext &Context, const Type *Node) {
+    // Use the original typed pointer to verify we can pass pointers to subtypes
+    // to equalsNode.
+    const T *TypedNode = cast<T>(Node);
+    const auto *Dec = Nodes.getNodeAs<FieldDecl>("decl");
+    return selectFirst<T>(
+               "", match(fieldDecl(hasParent(decl(has(fieldDecl(
+                             hasType(type(equalsNode(TypedNode)).bind(""))))))),
+                         *Dec, Context)) != nullptr;
+  }
 };
 
 TEST(IsEqualTo, MatchesNodesByIdentity) {
@@ -4680,6 +4733,10 @@ TEST(IsEqualTo, MatchesNodesByIdentity) {
   EXPECT_TRUE(matchAndVerifyResultTrue(
       "void f() { if (true) if(true) {} }", ifStmt().bind(""),
       new VerifyAncestorHasChildIsEqual<IfStmt>()));
+  EXPECT_TRUE(matchAndVerifyResultTrue(
+      "class X { class Y {} y; };",
+      fieldDecl(hasName("y"), hasType(type().bind(""))).bind("decl"),
+      new VerifyAncestorHasChildIsEqual<Type>()));
 }
 
 TEST(MatchFinder, CheckProfiling) {

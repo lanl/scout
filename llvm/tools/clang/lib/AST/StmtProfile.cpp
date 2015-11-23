@@ -450,6 +450,9 @@ void OMPClauseProfiler::VisitOMPDependClause(const OMPDependClause *C) {
 void OMPClauseProfiler::VisitOMPDeviceClause(const OMPDeviceClause *C) {
   Profiler->VisitStmt(C->getDevice());
 }
+void OMPClauseProfiler::VisitOMPMapClause(const OMPMapClause *C) {
+  VisitOMPClauseList(C);
+}
 }
 
 void
@@ -1360,6 +1363,22 @@ void StmtProfiler::VisitMaterializeTemporaryExpr(
 void StmtProfiler::VisitCXXFoldExpr(const CXXFoldExpr *S) {
   VisitExpr(S);
   ID.AddInteger(S->getOperator());
+}
+
+void StmtProfiler::VisitCoroutineBodyStmt(const CoroutineBodyStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitCoreturnStmt(const CoreturnStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitCoawaitExpr(const CoawaitExpr *S) {
+  VisitExpr(S);
+}
+
+void StmtProfiler::VisitCoyieldExpr(const CoyieldExpr *S) {
+  VisitExpr(S);
 }
 
 void StmtProfiler::VisitOpaqueValueExpr(const OpaqueValueExpr *E) {

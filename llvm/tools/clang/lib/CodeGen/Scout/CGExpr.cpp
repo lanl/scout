@@ -98,8 +98,10 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   
   auto aitr = func->arg_begin();
   
-  Value* plotPtr = aitr++;
-  Value* index = aitr++;
+  Value* plotPtr = &*aitr;
+  aitr++;
+  Value* index = &*aitr;
+  aitr++;
   
   typedef vector<Value*> ValueVec;
   
@@ -1277,16 +1279,20 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   auto aitr = queryFunc->arg_begin();
 
-  Value* meshPtr = aitr++;
+  Value* meshPtr = &*aitr;
+  aitr++;
   meshPtr->setName("mesh");
 
-  Value* outPtr = aitr++;
+  Value* outPtr = &*aitr;
+  aitr++;
   outPtr->setName("outMask");
   
-  Value* start = aitr++;
+  Value* start = &*aitr;
+  aitr++;
   start->setName("start");
   
-  Value* end = aitr++;
+  Value* end = &*aitr;
+  aitr++;
   end->setName("end");
   
   Address baseAddr = GetAddrOfLocalVar(mvd);

@@ -138,10 +138,10 @@ public:
       for(Function::iterator itr = f->begin(), itrEnd = f->end();
           itr != itrEnd; ++itr){
       
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
 
           if(CallInst* ci = dyn_cast<CallInst>(i)){
             funcs.push_back(ci->getCalledFunction());
@@ -177,7 +177,7 @@ public:
       aitr = f->arg_begin();
       while(aitr != f->arg_end()){
         naitr->setName(aitr->getName());
-        remap[aitr] = naitr;
+        remap[&*aitr] = &*naitr;
         ++aitr;
         ++naitr;
       }
@@ -185,13 +185,13 @@ public:
       for(auto itr = f->begin(), itrEnd = f->end();
           itr != itrEnd; ++itr){
 
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         BasicBlock* nb = BasicBlock::Create(context_, b->getName(), nf);
         remap[b] = nb;
 
         for(auto bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
           Instruction* ni = i->clone();
          
           remap[i] = ni;
@@ -205,10 +205,10 @@ public:
       for(auto itr = nf->begin(), itrEnd = nf->end();
           itr != itrEnd; ++itr){
 
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         for(auto bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
           RemapInstruction(i, remap, RF_IgnoreMissingEntries, 0);
         }
       }
@@ -272,11 +272,16 @@ public:
       B.SetInsertPoint(b);
 
       auto aitr = renderallFunc_->arg_begin();
-      Value* meshPtr = aitr++;
-      Value* windowPtr = aitr++;
-      Value* width = aitr++;
-      Value* height = aitr++;
-      Value* depth = aitr++;
+      Value* meshPtr = &*aitr;
+      aitr++;
+      Value* windowPtr = &*aitr;
+      aitr++;
+      Value* width = &*aitr;
+      aitr++;
+      Value* height = &*aitr;
+      aitr++;
+      Value* depth = &*aitr;
+      aitr++;
       
       string meshName = 
         cast<MDString>(volrenMD_->getOperand(3))->getString().str();
@@ -356,7 +361,7 @@ public:
 
       size_t offset = 0;
       while(aitr != renderallFunc_->arg_end()){
-        Value* data = B.CreateBitCast(aitr, m_.voidPtrTy, "var.ptr");
+        Value* data = B.CreateBitCast(&*aitr, m_.voidPtrTy, "var.ptr");
         
         Type* elementType = aitr->getType()->getPointerElementType();
         size_t size = elementType->getPrimitiveSizeInBits()*8;

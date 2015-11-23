@@ -2174,16 +2174,13 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
 
   // Determine the ID for this declaration.
   serialization::DeclID ID;
-  if (D->isFromASTFile()) {
-    assert(isRewritten(D) && "should not be emitting imported decl");
-    ID = getDeclID(D);
-  } else {
-    serialization::DeclID &IDR = DeclIDs[D];
-    if (IDR == 0)
-      IDR = NextDeclID++;
+  assert(!D->isFromASTFile() && "should not be emitting imported decl");
+  serialization::DeclID &IDR = DeclIDs[D];
+  if (IDR == 0)
+    IDR = NextDeclID++;
     
-    ID = IDR;
-  }
+  ID = IDR;
+
   bool isReplacingADecl = ID < FirstDeclID;
 
   // If this declaration is also a DeclContext, write blocks for the

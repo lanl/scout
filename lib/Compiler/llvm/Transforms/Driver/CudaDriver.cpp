@@ -315,10 +315,10 @@ void CudaDriver::create(Function *func,
 	  
 	// Copy variable from CPU to GPU.
 	insertMemcpyHtoD(ld,
-			 _builder.CreateBitCast(arg, i8PtrTy),
+			 _builder.CreateBitCast(&*arg, i8PtrTy),
 			 size);
 
-        memcpyList.push_back(Memcpy(arg, d_arg, size));
+        memcpyList.push_back(Memcpy(&*arg, d_arg, size));
 
 	Value* args2[] = {_builder.CreateBitCast(mn, i8PtrTy),
                           _builder.CreateBitCast(mf, i8PtrTy), ld}; 
@@ -349,7 +349,7 @@ void CudaDriver::create(Function *func,
 	  
 	  if (found) {
 	    Value* ld = _builder.CreateLoad(d_arg);
-	    insertMemcpyHtoD(ld, _builder.CreateBitCast(arg, i8PtrTy), size);
+	    insertMemcpyHtoD(ld, _builder.CreateBitCast(&*arg, i8PtrTy), size);
 	  }
 	}
 	
@@ -452,7 +452,9 @@ void CudaDriver::initialize() {
   // Insert Cuda initialization at the start of main().
   Function *func = _module.getFunction("main");
   assert(func != NULL && "Could not find main()!\n");
-  BasicBlock *bb = func->begin();
+  typedef llvm::Function::iterator BasicBlockIterator;
+  BasicBlockIterator itr = func->begin();
+  BasicBlock *bb = &*itr;
   _builder.SetInsertPoint(bb, bb->begin());
   _builder.CreateCall(init, ArrayRef<Value*>());
 
@@ -487,7 +489,8 @@ void CudaDriver::finalize() {
   for( ; bb != bb_end; ++bb) {
     if(isa< ReturnInst >(bb->getTerminator())) break;
   }
-  _builder.SetInsertPoint(bb, bb->getTerminator());
+  BasicBlock *b = &*bb;
+  _builder.SetInsertPoint(b, b->begin());
   _builder.CreateCall(fin, ArrayRef<Value*>());
 }
 

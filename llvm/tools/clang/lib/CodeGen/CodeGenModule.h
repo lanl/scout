@@ -732,6 +732,7 @@ public:
 
   llvm::Function *
   CreateGlobalInitOrDestructFunction(llvm::FunctionType *ty, const Twine &name,
+                                     const CGFunctionInfo &FI,
                                      SourceLocation Loc = SourceLocation(),
                                      bool TLS = false);
 
@@ -1029,6 +1030,11 @@ public:
                               AttributeListType &PAL,
                               unsigned &CallingConv,
                               bool AttrOnCallSite);
+
+  // Fills in the supplied string map with the set of target features for the
+  // passed in function.
+  void getFunctionFeatureMap(llvm::StringMap<bool> &FeatureMap,
+                             const FunctionDecl *FD);
 
   StringRef getMangledName(GlobalDecl GD);
   StringRef getBlockMangledName(GlobalDecl GD, const BlockDecl *BD);

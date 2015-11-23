@@ -95,7 +95,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       // collect basic blocks up to exit
       for( ; BB != F.end(); ++BB) {
-        Blocks.push_back(BB);
+        Blocks.push_back(&*BB);
       }
 
       llvm::CodeExtractor codeExtractor(Blocks, 0/*&DT*/, false);
@@ -192,11 +192,16 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       Function::arg_iterator arg_iter = mainTaskFunc->arg_begin();
       
-      Value* task = arg_iter++;
-      Value* regions = arg_iter++;
-      Value* numRegions = arg_iter++;
-      Value* context = arg_iter++;
-      Value* runtime = arg_iter;
+
+      Value* task = &*arg_iter;
+      arg_iter++;
+      Value* regions = &*arg_iter;
+      arg_iter++;
+      Value* numRegions = &*arg_iter;
+      arg_iter++;
+      Value* context = &*arg_iter;
+      arg_iter++;
+      Value* runtime = &*arg_iter;
 
       (void)task;
       (void)regions;
@@ -363,8 +368,10 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       // create call instruction
       arg_iter = F.arg_begin();
-      llvm::Value* argcValue = arg_iter++;
-      llvm::Value* argvValue = arg_iter++;
+      llvm::Value* argcValue = &*arg_iter;
+      arg_iter++;
+      llvm::Value* argvValue = &*arg_iter;
+      arg_iter++;
 
       llvm::SmallVector< llvm::Value *, 2 > args;
       args.push_back(argcValue);

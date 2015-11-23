@@ -318,6 +318,7 @@ namespace clang {
     DeclID VisitTemplateDecl(TemplateDecl *D);
     RedeclarableResult VisitRedeclarableTemplateDecl(RedeclarableTemplateDecl *D);
     void VisitClassTemplateDecl(ClassTemplateDecl *D);
+    void VisitBuiltinTemplateDecl(BuiltinTemplateDecl *D);
     void VisitVarTemplateDecl(VarTemplateDecl *D);
     void VisitFunctionTemplateDecl(FunctionTemplateDecl *D);
     void VisitTemplateTemplateParmDecl(TemplateTemplateParmDecl *D);
@@ -1937,6 +1938,10 @@ void ASTDeclReader::VisitClassTemplateDecl(ClassTemplateDecl *D) {
     Reader.Context.getInjectedClassNameType(
         D->getTemplatedDecl(), D->getInjectedClassNameSpecialization());
   }
+}
+
+void ASTDeclReader::VisitBuiltinTemplateDecl(BuiltinTemplateDecl *D) {
+  llvm_unreachable("BuiltinTemplates are not serialized");
 }
 
 /// TODO: Unify with ClassTemplateDecl version?

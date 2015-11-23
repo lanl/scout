@@ -23,6 +23,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetParser.h"
 // +===== Scout ============================================================+
 #include "Scout/Tools.h"
 // +========================================================================+
@@ -30,6 +31,7 @@
 using namespace clang::driver;
 using namespace clang::driver::tools;
 using namespace clang;
+using namespace llvm;
 using namespace llvm::opt;
 
 static llvm::opt::Arg *GetRTTIArgument(const ArgList &Args) {
@@ -334,7 +336,6 @@ Tool *ToolChain::SelectTool(const JobAction &JA) const {
 
 std::string ToolChain::GetFilePath(const char *Name) const {
   return D.GetFilePath(Name, *this);
-
 }
 
 std::string ToolChain::GetProgramPath(const char *Name) const {
@@ -361,7 +362,7 @@ std::string ToolChain::GetLinkerPath() const {
     return "";
   }
 
-  return GetProgramPath("ld");
+  return GetProgramPath(DefaultLinker);
 }
 
 types::ID ToolChain::LookupTypeForExtension(const char *Ext) const {
@@ -469,9 +470,9 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
             : tools::arm::getARMTargetCPU(MCPU, MArch, Triple);
     StringRef Suffix =
       tools::arm::getLLVMArchSuffixForARM(CPU, MArch, Triple);
-    bool ThumbDefault = Suffix.startswith("v6m") || Suffix.startswith("v7m") ||
-      Suffix.startswith("v7em") ||
-      (Suffix.startswith("v7") && getTriple().isOSBinFormatMachO());
+    bool IsMProfile = ARM::parseArchProfile(Suffix) == ARM::PK_M;
+    bool ThumbDefault = IsMProfile || (ARM::parseArchVersion(Suffix) == 7 && 
+                                       getTriple().isOSBinFormatMachO());
     // FIXME: this is invalid for WindowsCE
     if (getTriple().isOSWindows())
       ThumbDefault = true;
@@ -481,10 +482,9 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
     else
       ArchName = "arm";
 
-    // Assembly files should start in ARM mode.
-    if (InputType != types::TY_PP_Asm &&
-        Args.hasFlag(options::OPT_mthumb, options::OPT_mno_thumb, ThumbDefault))
-    {
+    // Assembly files should start in ARM mode, unless arch is M-profile.
+    if ((InputType != types::TY_PP_Asm && Args.hasFlag(options::OPT_mthumb,
+         options::OPT_mno_thumb, ThumbDefault)) || IsMProfile) {
       if (IsBigEndian)
         ArchName = "thumbeb";
       else
@@ -619,6 +619,12 @@ void ToolChain::AddCXXStdlibLibArgs(const ArgList &Args,
   }
 }
 
+void ToolChain::AddFilePathLibArgs(const ArgList &Args,
+                                   ArgStringList &CmdArgs) const {
+  for (const auto &LibPath : getFilePaths())
+    CmdArgs.push_back(Args.MakeArgString(StringRef("-L") + LibPath));
+}
+
 void ToolChain::AddCCKextLibArgs(const ArgList &Args,
                                  ArgStringList &CmdArgs) const {
   CmdArgs.push_back("-lcc_kext");
@@ -659,3 +665,6 @@ SanitizerMask ToolChain::getSupportedSanitizers() const {
     Res |= CFIICall;
   return Res;
 }
+
+void ToolChain::AddCudaIncludeArgs(const ArgList &DriverArgs,
+                                   ArgStringList &CC1Args) const {}

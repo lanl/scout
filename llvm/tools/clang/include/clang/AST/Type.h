@@ -1227,6 +1227,16 @@ enum RefQualifierKind {
   RQ_RValue
 };
 
+/// Which keyword(s) were used to create an AutoType.
+enum class AutoTypeKeyword {
+  /// \brief auto
+  Auto,
+  /// \brief decltype(auto)
+  DecltypeAuto,
+  /// \brief __auto_type (GNU extension)
+  GNUAutoType
+};
+
 /// The base class of the type hierarchy.
 ///
 /// A central concept with types is that each type always has a canonical
@@ -1448,8 +1458,9 @@ protected:
 
     unsigned : NumTypeBits;
 
-    /// Was this placeholder type spelled as 'decltype(auto)'?
-    unsigned IsDecltypeAuto : 1;
+    /// Was this placeholder type spelled as 'auto', 'decltype(auto)',
+    /// or '__auto_type'?  AutoTypeKeyword value.
+    unsigned Keyword : 2;
   };
 
   union {
@@ -1677,6 +1688,7 @@ public:
   bool isObjCQualifiedClassType() const;        // Class<foo>
   bool isObjCObjectOrInterfaceType() const;
   bool isObjCIdType() const;                    // id
+  bool isObjCInertUnsafeUnretainedType() const;
 
   /// Whether the type is Objective-C 'id' or a __kindof type of an
   /// object type, e.g., __kindof NSView * or __kindof id
@@ -4174,6 +4186,7 @@ public:
     attr_nullable,
     attr_null_unspecified,
     attr_objc_kindof,
+    attr_objc_inert_unsafe_unretained,
   };
 
 private:
@@ -4451,8 +4464,7 @@ public:
 /// is no deduced type and an auto type is canonical. In the latter case, it is
 /// also a dependent type.
 class AutoType : public Type, public llvm::FoldingSetNode {
-  AutoType(QualType DeducedType, bool IsDecltypeAuto,
-           bool IsDependent)
+  AutoType(QualType DeducedType, AutoTypeKeyword Keyword, bool IsDependent)
     : Type(Auto, DeducedType.isNull() ? QualType(this, 0) : DeducedType,
            /*Dependent=*/IsDependent, /*InstantiationDependent=*/IsDependent,
            /*VariablyModified=*/false,
@@ -4460,13 +4472,18 @@ class AutoType : public Type, public llvm::FoldingSetNode {
                ? false : DeducedType->containsUnexpandedParameterPack()) {
     assert((DeducedType.isNull() || !IsDependent) &&
            "auto deduced to dependent type");
-    AutoTypeBits.IsDecltypeAuto = IsDecltypeAuto;
+    AutoTypeBits.Keyword = (unsigned)Keyword;
   }
 
   friend class ASTContext;  // ASTContext creates these
 
 public:
-  bool isDecltypeAuto() const { return AutoTypeBits.IsDecltypeAuto; }
+  bool isDecltypeAuto() const {
+    return getKeyword() == AutoTypeKeyword::DecltypeAuto;
+  }
+  AutoTypeKeyword getKeyword() const {
+    return (AutoTypeKeyword)AutoTypeBits.Keyword;
+  }
 
   bool isSugared() const { return !isCanonicalUnqualified(); }
   QualType desugar() const { return getCanonicalTypeInternal(); }
@@ -4481,14 +4498,13 @@ public:
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getDeducedType(), isDecltypeAuto(),
-		    isDependentType());
+    Profile(ID, getDeducedType(), getKeyword(), isDependentType());
   }
 
   static void Profile(llvm::FoldingSetNodeID &ID, QualType Deduced,
-                      bool IsDecltypeAuto, bool IsDependent) {
+                      AutoTypeKeyword Keyword, bool IsDependent) {
     ID.AddPointer(Deduced.getAsOpaquePtr());
-    ID.AddBoolean(IsDecltypeAuto);
+    ID.AddInteger((unsigned)Keyword);
     ID.AddBoolean(IsDependent);
   }
 

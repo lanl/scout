@@ -188,13 +188,14 @@ void CGLegionTask::EmitLegionTaskInitFunction() {
   aitr = legionTaskInitFunc->arg_begin();
   for(size_t i = 0; i < legionTaskInitFunc->arg_size() - 2; ++i){
     if(i == meshPos){
-      meshPtr = aitr;
+      meshPtr = &*aitr;
     }
     ++aitr;
   }
   
-  legionContext = aitr++;
-  legionRuntime = aitr;
+  legionContext = &*aitr;
+  aitr++;
+  legionRuntime = &*aitr;
  
   // emit entry block
   BasicBlock* entry = BasicBlock::Create(C, "entry", legionTaskInitFunc);
@@ -267,11 +268,15 @@ void CGLegionTask::EmitLegionTaskFunction() {
                                           &CGM.getModule());
   
   auto aitr = legionTaskFunc->arg_begin();
-  Value* task = aitr++;
-  Value* regions = aitr++;
-  Value* numRegions = aitr++;
-  Value* context = aitr++;
-  Value* runtime = aitr;
+  Value* task = &*aitr;
+  aitr++;
+  Value* regions = &*aitr;
+  aitr++;
+  Value* numRegions = &*aitr;
+  aitr++;
+  Value* context = &*aitr;
+  aitr++;
+  Value* runtime = &*aitr;
   
   LLVMContext& C = CGM.getLLVMContext();
   BasicBlock* entry = BasicBlock::Create(C, "entry", legionTaskFunc);

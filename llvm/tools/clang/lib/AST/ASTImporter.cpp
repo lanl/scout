@@ -1803,7 +1803,7 @@ QualType ASTNodeImporter::VisitAutoType(const AutoType *T) {
       return QualType();
   }
   
-  return Importer.getToContext().getAutoType(ToDeduced, T->isDecltypeAuto(), 
+  return Importer.getToContext().getAutoType(ToDeduced, T->getKeyword(),
                                              /*IsDependent*/false);
 }
 
@@ -4984,13 +4984,14 @@ Stmt *ASTNodeImporter::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
   if (!ToBody && S->getBody())
     return nullptr;
   SourceLocation ToForLoc = Importer.Import(S->getForLoc());
+  SourceLocation ToCoawaitLoc = Importer.Import(S->getCoawaitLoc());
   SourceLocation ToColonLoc = Importer.Import(S->getColonLoc());
   SourceLocation ToRParenLoc = Importer.Import(S->getRParenLoc());
   return new (Importer.getToContext()) CXXForRangeStmt(ToRange, ToBeginEnd,
                                                        ToCond, ToInc,
                                                        ToLoopVar, ToBody,
-                                                       ToForLoc, ToColonLoc,
-                                                       ToRParenLoc);
+                                                       ToForLoc, ToCoawaitLoc,
+                                                       ToColonLoc, ToRParenLoc);
 }
 
 Stmt *ASTNodeImporter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *S) {

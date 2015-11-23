@@ -1022,7 +1022,7 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
 
   // collect forall basic blocks up to exit
   for( ; BB->getName() != exit->getName(); ++BB) {
-    Blocks.push_back(BB);
+    Blocks.push_back(&*BB);
   }
 
   //SC_TODO: should we be using a DominatorTree?
@@ -1426,12 +1426,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   aitr = transferFunc->arg_begin();
   
-  Value* mp = aitr;
+  Value* mp = &*aitr;
   
   aitr->setName("mesh.void.ptr");
   aitr++;
 
-  CurrentVolumeRenderallIndex = aitr;
+  CurrentVolumeRenderallIndex = &*aitr;
   aitr->setName("index");
   aitr++;
 
@@ -1565,7 +1565,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   args.clear();
   aitr = wrapperFunc->arg_begin();
   while(aitr != wrapperFunc->arg_end()){
-    args.push_back(aitr++);
+    args.push_back(&*aitr);
+    aitr++;
   }
   
   args.push_back(transferFunc);
@@ -1855,7 +1856,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   if(isVec){
     aitr++;
     aitr->setName("vec.ptr");
-    vecPtr = aitr;
+    vecPtr = &*aitr;
   }
   
   BasicBlock* entry = BasicBlock::Create(CGM.getLLVMContext(), "entry", func);
@@ -1960,8 +1961,10 @@ RValue CodeGenFunction::EmitPlotCall(const CallExpr* C){
   
   auto aitr = func->arg_begin();
   
-  Value* plotPtr = aitr++;
-  Value* index = aitr++;
+  Value* plotPtr = &*aitr;
+  aitr++;
+  Value* index = &*aitr;
+  aitr++;
   
   typedef vector<Value*> ValueVec;
   

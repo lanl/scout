@@ -289,9 +289,13 @@ llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
 
 llvm::Function *CGScoutRuntime::EmitRuntimeInitFunc(SourceLocation Loc,
                                                     CodeGenFunction *CGF) {
-  auto InitFunctionTy = llvm::FunctionType::get(CGM.VoidTy, /* isVarArg */ false);
+  FunctionArgList Args;
+  auto &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+           CGM.getContext().VoidTy, Args, FunctionType::ExtInfo(),
+           /*isVariadic=*/false);
+  auto InitFunctionTy = CGM.getTypes().GetFunctionType(FI);
   auto InitFunction   = CGM.CreateGlobalInitOrDestructFunction(InitFunctionTy,
-                                                               ".__sc_init__.");
+                                                               ".__sc_init__.", FI);
   CodeGenFunction InitCGF(CGM);
   FunctionArgList ArgList; /* empty */
   InitCGF.StartFunction(GlobalDecl(), CGM.getContext().VoidTy, InitFunction,

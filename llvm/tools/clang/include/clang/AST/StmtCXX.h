@@ -131,12 +131,16 @@ class CXXForRangeStmt : public Stmt {
   // SubExprs[RANGE] is an expression or declstmt.
   // SubExprs[COND] and SubExprs[INC] are expressions.
   Stmt *SubExprs[END];
+  SourceLocation CoawaitLoc;
   SourceLocation ColonLoc;
   SourceLocation RParenLoc;
+
+  friend class ASTStmtReader;
 public:
   CXXForRangeStmt(DeclStmt *Range, DeclStmt *BeginEnd,
                   Expr *Cond, Expr *Inc, DeclStmt *LoopVar, Stmt *Body,
-                  SourceLocation FL, SourceLocation CL, SourceLocation RPL);
+                  SourceLocation FL, SourceLocation CAL, SourceLocation CL,
+                  SourceLocation RPL);
   CXXForRangeStmt(EmptyShell Empty) : Stmt(CXXForRangeStmtClass, Empty) { }
 
 
@@ -181,13 +185,10 @@ public:
   void setLoopVarStmt(Stmt *S) { SubExprs[LOOPVAR] = S; }
   void setBody(Stmt *S) { SubExprs[BODY] = S; }
 
-
   SourceLocation getForLoc() const { return ForLoc; }
-  void setForLoc(SourceLocation Loc) { ForLoc = Loc; }
+  SourceLocation getCoawaitLoc() const { return CoawaitLoc; }
   SourceLocation getColonLoc() const { return ColonLoc; }
-  void setColonLoc(SourceLocation Loc) { ColonLoc = Loc; }
   SourceLocation getRParenLoc() const { return RParenLoc; }
-  void setRParenLoc(SourceLocation Loc) { RParenLoc = Loc; }
 
   SourceLocation getLocStart() const LLVM_READONLY { return ForLoc; }
   SourceLocation getLocEnd() const LLVM_READONLY {
@@ -284,6 +285,94 @@ public:
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MSDependentExistsStmtClass;
+  }
+};
+
+/// \brief Represents the body of a coroutine. This wraps the normal function
+/// body and holds the additional semantic context required to set up and tear
+/// down the coroutine frame.
+class CoroutineBodyStmt : public Stmt {
+  enum SubStmt { Body, Count };
+  Stmt *SubStmts[SubStmt::Count];
+
+  friend class ASTStmtReader;
+public:
+  CoroutineBodyStmt(Stmt *Body)
+      : Stmt(CoroutineBodyStmtClass) {
+    SubStmts[CoroutineBodyStmt::Body] = Body;
+  }
+
+  /// \brief Retrieve the body of the coroutine as written. This will be either
+  /// a CompoundStmt or a TryStmt.
+  Stmt *getBody() const {
+    return SubStmts[SubStmt::Body];
+  }
+
+  SourceLocation getLocStart() const LLVM_READONLY {
+    return getBody()->getLocStart();
+  }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return getBody()->getLocEnd();
+  }
+
+  child_range children() {
+    return child_range(SubStmts, SubStmts + SubStmt::Count);
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CoroutineBodyStmtClass;
+  }
+};
+
+/// \brief Represents a 'co_return' statement in the C++ Coroutines TS.
+///
+/// This statament models the initialization of the coroutine promise
+/// (encapsulating the eventual notional return value) from an expression
+/// (or braced-init-list), followed by termination of the coroutine.
+///
+/// This initialization is modeled by the evaluation of the operand
+/// followed by a call to one of:
+///   <promise>.return_value(<operand>)
+///   <promise>.return_void()
+/// which we name the "promise call".
+class CoreturnStmt : public Stmt {
+  SourceLocation CoreturnLoc;
+
+  enum SubStmt { Operand, PromiseCall, Count };
+  Stmt *SubStmts[SubStmt::Count];
+
+  friend class ASTStmtReader;
+public:
+  CoreturnStmt(SourceLocation CoreturnLoc, Stmt *Operand, Stmt *PromiseCall)
+      : Stmt(CoreturnStmtClass), CoreturnLoc(CoreturnLoc) {
+    SubStmts[SubStmt::Operand] = Operand;
+    SubStmts[SubStmt::PromiseCall] = PromiseCall;
+  }
+
+  SourceLocation getKeywordLoc() const { return CoreturnLoc; }
+
+  /// \brief Retrieve the operand of the 'co_return' statement. Will be nullptr
+  /// if none was specified.
+  Expr *getOperand() const { return static_cast<Expr*>(SubStmts[Operand]); }
+
+  /// \brief Retrieve the promise call that results from this 'co_return'
+  /// statement. Will be nullptr if either the coroutine has not yet been
+  /// finalized or the coroutine has no eventual return type.
+  Expr *getPromiseCall() const {
+    return static_cast<Expr*>(SubStmts[PromiseCall]);
+  }
+
+  SourceLocation getLocStart() const LLVM_READONLY { return CoreturnLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return getOperand()->getLocEnd();
+  }
+
+  child_range children() {
+    return child_range(SubStmts, SubStmts + SubStmt::Count);
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == CoreturnStmtClass;
   }
 };
 

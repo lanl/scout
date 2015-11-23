@@ -216,7 +216,7 @@ public:
 
       for(Function::iterator itr = f_->begin(), itrEnd = f_->end();
           itr != itrEnd; ++itr){
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         bv.push_back(b);
       }
 
@@ -256,11 +256,11 @@ public:
       for(Function::iterator itr = f_->begin(), itrEnd = f_->end();
           itr != itrEnd; ++itr){
 
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
 
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
           if(AllocaInst* ai = dyn_cast<AllocaInst>(i)){
             string n = getMeshFieldName(ai->getName());
             if(n.empty()){
@@ -284,11 +284,11 @@ public:
       for(Function::iterator itr = f_->begin(), itrEnd = f_->end();
           itr != itrEnd; ++itr){
 
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
 
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
           if(StoreInst* si = dyn_cast<StoreInst>(i)){
             Value* po = si->getPointerOperand();
             string n = getMeshFieldName(po->getName());
@@ -333,7 +333,7 @@ public:
       
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
-        field->setValue(aitr);
+        field->setValue(&*aitr);
         aitr->setName(itr.first);
         ++aitr;
       }
@@ -341,13 +341,13 @@ public:
       for(Function::iterator itr = f_->begin(), itrEnd = f_->end();
           itr != itrEnd; ++itr){
 
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         BasicBlock* bk = BasicBlock::Create(context_, b->getName(), kf_);
         vm[b] = bk;
 
         for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
 
           if(AllocaInst* ai = dyn_cast<AllocaInst>(i)){
             if(ai->getName().startswith("tid.") ||
@@ -400,10 +400,10 @@ public:
       for(Function::iterator itr = kf_->begin(), itrEnd = kf_->end();
           itr != itrEnd; ++itr){
 
-        BasicBlock* b = itr;
+        BasicBlock* b = &*itr;
         for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
             bitr != bitrEnd; ++bitr){
-          Instruction* i = bitr;
+          Instruction* i = &*bitr;
           RemapInstruction(i, vm, RF_IgnoreMissingEntries, 0);
         }
       }
@@ -429,10 +429,14 @@ public:
       builder.SetInsertPoint(b);
       
       Function::arg_iterator aitr = f_->arg_begin();
-      Value* meshPtr = aitr++;
-      Value* widthPtr = aitr++;
-      Value* heightPtr = aitr++;
-      Value* depthPtr = aitr++;
+      Value* meshPtr = &*aitr;
+      aitr++;
+      Value* widthPtr = &*aitr;
+      aitr++;
+      Value* heightPtr = &*aitr;
+      aitr++;
+      Value* depthPtr = &*aitr;
+      aitr++;
 
       Value* width = builder.CreateLoad(widthPtr, "width");
       Value* height = builder.CreateLoad(heightPtr, "height");

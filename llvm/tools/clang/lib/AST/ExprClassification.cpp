@@ -194,6 +194,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::CXXFoldExprClass:
   case Expr::NoInitExprClass:
   case Expr::DesignatedInitUpdateExprClass:
+  case Expr::CoyieldExprClass:
     return Cl::CL_PRValue;
 
     // Next come the complicated cases.
@@ -405,6 +406,9 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
     assert(cast<InitListExpr>(E)->getNumInits() == 1 &&
            "Only 1-element init lists can be glvalues.");
     return ClassifyInternal(Ctx, cast<InitListExpr>(E)->getInit(0));
+
+  case Expr::CoawaitExprClass:
+    return ClassifyInternal(Ctx, cast<CoawaitExpr>(E)->getResumeExpr());
   }
 
   llvm_unreachable("unhandled expression kind in classification");

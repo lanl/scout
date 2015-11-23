@@ -93,9 +93,11 @@ llvm::Function *CodeGenModule::LegionMainFunction() {
 
    // name the two args argc and argv
    llvm::Function::arg_iterator argiter = MainFunc->arg_begin();
-   llvm::Value* int32_argc = argiter++;
+   llvm::Value* int32_argc = &*argiter;
+   argiter++;
    int32_argc->setName("argc");
-   llvm::Value* ptr_argv = argiter++;
+   llvm::Value* ptr_argv = &*argiter;
+   argiter++;
    ptr_argv->setName("argv");
 
   }
@@ -185,8 +187,10 @@ void CodeGenModule::finishLegionMainFunction() {
   llvm::AllocaInst* ptr_argv_addr = Builder.CreateAlloca(llvm::PointerType::get(llvm::PointerType::get(Int8Ty, 0), 0), 0, "argv.addr");
 
   llvm::Function::arg_iterator args = MainFunc->arg_begin();
-  llvm::Value* argcVal = args++;
-  llvm::Value* argvVal = args++;
+  llvm::Value* argcVal = &*args;
+  args++;
+  llvm::Value* argvVal = &*args;
+  args++;
 
   // store to argc and argv
   Builder.CreateStore(argcVal, ptr_argc_addr);
