@@ -52,6 +52,7 @@ MCSymbol *MachineBasicBlock::getSymbol() const {
     const MachineFunction *MF = getParent();
     MCContext &Ctx = MF->getContext();
     const char *Prefix = Ctx.getAsmInfo()->getPrivateLabelPrefix();
+    assert(getNumber() >= 0 && "cannot get label for unreachable MBB");
     CachedMCSymbol = Ctx.getOrCreateSymbol(Twine(Prefix) + "BB" +
                                            Twine(MF->getFunctionNumber()) +
                                            "_" + Twine(getNumber()));
@@ -506,31 +507,45 @@ void MachineBasicBlock::updateTerminator() {
 }
 
 void MachineBasicBlock::addSuccessor(MachineBasicBlock *Succ, uint32_t Weight) {
-
-  // If we see non-zero value for the first time it means we actually use Weight
-  // list, so we fill all Weights with 0's.
-  if (Weight != 0 && Weights.empty())
-    Weights.resize(Successors.size());
-
-  if (Weight != 0 || !Weights.empty())
+  // Weight list is either empty (if successor list isn't empty, this means
+  // disabled optimization) or has the same size as successor list.
+  if (!(Weights.empty() && !Successors.empty()))
     Weights.push_back(Weight);
+  Successors.push_back(Succ);
+  Succ->addPredecessor(this);
+}
 
+void MachineBasicBlock::addSuccessorWithoutWeight(MachineBasicBlock *Succ) {
+  // We need to make sure weight list is either empty or has the same size of
+  // successor list. When this function is called, we can safely delete all
+  // weight in the list.
+  Weights.clear();
+  Successors.push_back(Succ);
+  Succ->addPredecessor(this);
+}
+
+void MachineBasicBlock::addSuccessor(MachineBasicBlock *Succ,
+                                     BranchProbability Prob) {
+  // Probability list is either empty (if successor list isn't empty, this means
+  // disabled optimization) or has the same size as successor list.
+  if (!(Probs.empty() && !Successors.empty()))
+    Probs.push_back(Prob);
+  Successors.push_back(Succ);
+  Succ->addPredecessor(this);
+}
+
+void MachineBasicBlock::addSuccessorWithoutProb(MachineBasicBlock *Succ) {
+  // We need to make sure probability list is either empty or has the same size
+  // of successor list. When this function is called, we can safely delete all
+  // probability in the list.
+  Probs.clear();
   Successors.push_back(Succ);
   Succ->addPredecessor(this);
 }
 
 void MachineBasicBlock::removeSuccessor(MachineBasicBlock *Succ) {
-  Succ->removePredecessor(this);
   succ_iterator I = std::find(Successors.begin(), Successors.end(), Succ);
-  assert(I != Successors.end() && "Not a current successor!");
-
-  // If Weight list is empty it means we don't use it (disabled optimization).
-  if (!Weights.empty()) {
-    weight_iterator WI = getWeightIterator(I);
-    Weights.erase(WI);
-  }
-
-  Successors.erase(I);
+  removeSuccessor(I);
 }
 
 MachineBasicBlock::succ_iterator
@@ -541,6 +556,13 @@ MachineBasicBlock::removeSuccessor(succ_iterator I) {
   if (!Weights.empty()) {
     weight_iterator WI = getWeightIterator(I);
     Weights.erase(WI);
+  }
+
+  // If probability list is empty it means we don't use it (disabled
+  // optimization).
+  if (!Probs.empty()) {
+    probability_iterator WI = getProbabilityIterator(I);
+    Probs.erase(WI);
   }
 
   (*I)->removePredecessor(this);
@@ -568,10 +590,10 @@ void MachineBasicBlock::replaceSuccessor(MachineBasicBlock *Old,
     }
   }
   assert(OldI != E && "Old is not a successor of this block");
-  Old->removePredecessor(this);
 
   // If New isn't already a successor, let it take Old's place.
   if (NewI == E) {
+    Old->removePredecessor(this);
     New->addPredecessor(this);
     *OldI = New;
     return;
@@ -579,12 +601,13 @@ void MachineBasicBlock::replaceSuccessor(MachineBasicBlock *Old,
 
   // New is already a successor.
   // Update its weight instead of adding a duplicate edge.
-  if (!Weights.empty()) {
-    weight_iterator OldWI = getWeightIterator(OldI);
-    *getWeightIterator(NewI) += *OldWI;
-    Weights.erase(OldWI);
-  }
-  Successors.erase(OldI);
+  if (!Weights.empty())
+    *getWeightIterator(NewI) += *getWeightIterator(OldI);
+  // Update its probability instead of adding a duplicate edge.
+  if (!Probs.empty())
+    *getProbabilityIterator(NewI) += *getProbabilityIterator(OldI);
+
+  removeSuccessor(OldI);
 }
 
 void MachineBasicBlock::addPredecessor(MachineBasicBlock *Pred) {
@@ -1116,11 +1139,35 @@ uint32_t MachineBasicBlock::getSuccWeight(const_succ_iterator Succ) const {
   return *getWeightIterator(Succ);
 }
 
+/// Return probability of the edge from this block to MBB. If probability list
+/// is empty, return a default probability which is 1/N, where N is the number
+/// of successors. If the probability of the given successor is unknown, then
+/// sum up all known probabilities and return the complement of the sum divided
+/// by the number of unknown probabilities.
+BranchProbability
+MachineBasicBlock::getSuccProbability(const_succ_iterator Succ) const {
+  if (Probs.empty())
+    return BranchProbability(1, succ_size());
+
+  auto Prob = *getProbabilityIterator(Succ);
+  assert(!Prob.isUnknown());
+  return Prob;
+}
+
 /// Set successor weight of a given iterator.
 void MachineBasicBlock::setSuccWeight(succ_iterator I, uint32_t Weight) {
   if (Weights.empty())
     return;
   *getWeightIterator(I) = Weight;
+}
+
+/// Set successor probability of a given iterator.
+void MachineBasicBlock::setSuccProbability(succ_iterator I,
+                                           BranchProbability Prob) {
+  assert(!Prob.isUnknown());
+  if (Probs.empty())
+    return;
+  *getProbabilityIterator(I) = Prob;
 }
 
 /// Return wight iterator corresonding to the I successor iterator.
@@ -1139,6 +1186,25 @@ getWeightIterator(MachineBasicBlock::const_succ_iterator I) const {
   const size_t index = std::distance(Successors.begin(), I);
   assert(index < Weights.size() && "Not a current successor!");
   return Weights.begin() + index;
+}
+
+/// Return probability iterator corresonding to the I successor iterator.
+MachineBasicBlock::probability_iterator
+MachineBasicBlock::getProbabilityIterator(MachineBasicBlock::succ_iterator I) {
+  assert(Probs.size() == Successors.size() && "Async probability list!");
+  const size_t index = std::distance(Successors.begin(), I);
+  assert(index < Probs.size() && "Not a current successor!");
+  return Probs.begin() + index;
+}
+
+/// Return probability iterator corresonding to the I successor iterator
+MachineBasicBlock::const_probability_iterator
+MachineBasicBlock::getProbabilityIterator(
+    MachineBasicBlock::const_succ_iterator I) const {
+  assert(Probs.size() == Successors.size() && "Async probability list!");
+  const size_t index = std::distance(Successors.begin(), I);
+  assert(index < Probs.size() && "Not a current successor!");
+  return Probs.begin() + index;
 }
 
 /// Return whether (physical) register "Reg" has been <def>ined and not <kill>ed
@@ -1214,4 +1280,18 @@ MachineBasicBlock::computeRegisterLiveness(const TargetRegisterInfo *TRI,
 
   // At this point we have no idea of the liveness of the register.
   return LQR_Unknown;
+}
+
+const uint32_t *
+MachineBasicBlock::getBeginClobberMask(const TargetRegisterInfo *TRI) const {
+  // EH funclet entry does not preserve any registers.
+  return isEHFuncletEntry() ? TRI->getNoPreservedMask() : nullptr;
+}
+
+const uint32_t *
+MachineBasicBlock::getEndClobberMask(const TargetRegisterInfo *TRI) const {
+  // If we see a return block with successors, this must be a funclet return,
+  // which does not preserve any registers. If there are no successors, we don't
+  // care what kind of return it is, putting a mask after it is a no-op.
+  return isReturnBlock() && !succ_empty() ? TRI->getNoPreservedMask() : nullptr;
 }

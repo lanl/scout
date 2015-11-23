@@ -237,8 +237,7 @@ define float @test_x86_fnmsub_ss(float %a0, float %a1, float %a2) {
 define <4 x float> @test_x86_fmadd_ps_load(<4 x float>* %a0, <4 x float> %a1, <4 x float> %a2) {
 ; CHECK_FMA-LABEL: test_x86_fmadd_ps_load:
 ; CHECK_FMA:       # BB#0:
-; CHECK_FMA-NEXT:    vmovaps (%rdi), %xmm2
-; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    vfmadd132ps (%rdi), %xmm1, %xmm0
 ; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmadd_ps_load:
@@ -254,8 +253,7 @@ define <4 x float> @test_x86_fmadd_ps_load(<4 x float>* %a0, <4 x float> %a1, <4
 define <4 x float> @test_x86_fmsub_ps_load(<4 x float>* %a0, <4 x float> %a1, <4 x float> %a2) {
 ; CHECK_FMA-LABEL: test_x86_fmsub_ps_load:
 ; CHECK_FMA:       # BB#0:
-; CHECK_FMA-NEXT:    vmovaps (%rdi), %xmm2
-; CHECK_FMA-NEXT:    vfmsub213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    vfmsub132ps (%rdi), %xmm1, %xmm0
 ; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_ps_load:
@@ -588,8 +586,7 @@ define <4 x float> @test_v4f32_fma_x_c1_fmul_x_c2(<4 x float> %x) #0 {
 define <4 x float> @test_v4f32_fma_fmul_x_c1_c2_y(<4 x float> %x, <4 x float> %y) #0 {
 ; CHECK_FMA-LABEL: test_v4f32_fma_fmul_x_c1_c2_y:
 ; CHECK_FMA:       # BB#0:
-; CHECK_FMA-NEXT:    vmovaps {{.*#+}} xmm2 = [4.000000e+00,6.000000e+00,6.000000e+00,4.000000e+00]
-; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    vfmadd132ps {{.*}}(%rip), %xmm1, %xmm0
 ; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_v4f32_fma_fmul_x_c1_c2_y:

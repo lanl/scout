@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/ProfileData/InstrProfReader.h"
@@ -29,16 +30,65 @@
 
 using namespace llvm;
 
-static void exitWithError(const Twine &Message, StringRef Whence = "") {
+static void exitWithError(const Twine &Message,
+                          StringRef Whence = "",
+                          StringRef Hint = "") {
   errs() << "error: ";
   if (!Whence.empty())
     errs() << Whence << ": ";
   errs() << Message << "\n";
+  if (!Hint.empty())
+    errs() << Hint << "\n";
   ::exit(1);
 }
 
+static void exitWithErrorCode(const std::error_code &Error,
+                              StringRef Whence = "") {
+  if (Error.category() == instrprof_category()) {
+    instrprof_error instrError = static_cast<instrprof_error>(Error.value());
+    if (instrError == instrprof_error::unrecognized_format) {
+      // Hint for common error of forgetting -sample for sample profiles.
+      exitWithError(Error.message(), Whence,
+                    "Perhaps you forgot to use the -sample option?");
+    }
+  }
+  exitWithError(Error.message(), Whence);
+}
+
 namespace {
-enum ProfileKinds { instr, sample };
+    enum ProfileKinds { instr, sample };
+}
+
+static void handleMergeWriterError(std::error_code &Error,
+                                   StringRef WhenceFile = "",
+                                   StringRef WhenceFunction = "",
+                                   bool ShowHint = true)
+{
+  if (!WhenceFile.empty())
+    errs() << WhenceFile << ": ";
+  if (!WhenceFunction.empty())
+    errs() << WhenceFunction << ": ";
+  errs() << Error.message() << "\n";
+
+  if (ShowHint) {
+    StringRef Hint = "";
+    if (Error.category() == instrprof_category()) {
+      instrprof_error instrError = static_cast<instrprof_error>(Error.value());
+      switch (instrError) {
+      case instrprof_error::hash_mismatch:
+      case instrprof_error::count_mismatch:
+      case instrprof_error::value_site_count_mismatch:
+        Hint = "Make sure that all profile data to be merged is generated " \
+               "from the same binary.";
+        break;
+      default:
+        break;
+      }
+    }
+
+    if (!Hint.empty())
+      errs() << Hint << "\n";
+  }
 }
 
 static void mergeInstrProfile(const cl::list<std::string> &Inputs,
@@ -49,20 +99,25 @@ static void mergeInstrProfile(const cl::list<std::string> &Inputs,
   std::error_code EC;
   raw_fd_ostream Output(OutputFilename.data(), EC, sys::fs::F_None);
   if (EC)
-    exitWithError(EC.message(), OutputFilename);
+    exitWithErrorCode(EC, OutputFilename);
 
   InstrProfWriter Writer;
+  SmallSet<std::error_code, 4> WriterErrorCodes;
   for (const auto &Filename : Inputs) {
     auto ReaderOrErr = InstrProfReader::create(Filename);
     if (std::error_code ec = ReaderOrErr.getError())
-      exitWithError(ec.message(), Filename);
+      exitWithErrorCode(ec, Filename);
 
     auto Reader = std::move(ReaderOrErr.get());
-    for (auto &I : *Reader)
-      if (std::error_code EC = Writer.addRecord(std::move(I)))
-        errs() << Filename << ": " << I.Name << ": " << EC.message() << "\n";
+    for (auto &I : *Reader) {
+      if (std::error_code EC = Writer.addRecord(std::move(I))) {
+        // Only show hint the first time an error occurs.
+        bool firstTime = WriterErrorCodes.insert(EC).second;
+        handleMergeWriterError(EC, Filename, I.Name, firstTime);
+      }
+    }
     if (Reader->hasError())
-      exitWithError(Reader->getError().message(), Filename);
+      exitWithErrorCode(Reader->getError(), Filename);
   }
   Writer.write(Output);
 }
@@ -73,7 +128,7 @@ static void mergeSampleProfile(const cl::list<std::string> &Inputs,
   using namespace sampleprof;
   auto WriterOrErr = SampleProfileWriter::create(OutputFilename, OutputFormat);
   if (std::error_code EC = WriterOrErr.getError())
-    exitWithError(EC.message(), OutputFilename);
+    exitWithErrorCode(EC, OutputFilename);
 
   auto Writer = std::move(WriterOrErr.get());
   StringMap<FunctionSamples> ProfileMap;
@@ -82,7 +137,7 @@ static void mergeSampleProfile(const cl::list<std::string> &Inputs,
     auto ReaderOrErr =
         SampleProfileReader::create(Filename, getGlobalContext());
     if (std::error_code EC = ReaderOrErr.getError())
-      exitWithError(EC.message(), Filename);
+      exitWithErrorCode(EC, Filename);
 
     // We need to keep the readers around until after all the files are
     // read so that we do not lose the function names stored in each
@@ -91,7 +146,7 @@ static void mergeSampleProfile(const cl::list<std::string> &Inputs,
     Readers.push_back(std::move(ReaderOrErr.get()));
     const auto Reader = Readers.back().get();
     if (std::error_code EC = Reader->read())
-      exitWithError(EC.message(), Filename);
+      exitWithErrorCode(EC, Filename);
 
     StringMap<FunctionSamples> &Profiles = Reader->getProfiles();
     for (StringMap<FunctionSamples>::iterator I = Profiles.begin(),
@@ -143,7 +198,7 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
                             std::string ShowFunction, raw_fd_ostream &OS) {
   auto ReaderOrErr = InstrProfReader::create(Filename);
   if (std::error_code EC = ReaderOrErr.getError())
-    exitWithError(EC.message(), Filename);
+    exitWithErrorCode(EC, Filename);
 
   auto Reader = std::move(ReaderOrErr.get());
   uint64_t MaxFunctionCount = 0, MaxBlockCount = 0;
@@ -168,8 +223,8 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
          << "    Counters: " << Func.Counts.size() << "\n"
          << "    Function count: " << Func.Counts[0] << "\n";
       if (ShowIndirectCallTargets)
-        OS << "    Indirect Call Site Count: " << Func.IndirectCallSites.size()
-           << "\n";
+        OS << "    Indirect Call Site Count: "
+           << Func.getNumValueSites(IPVK_IndirectCallTarget) << "\n";
     }
 
     if (Show && ShowCounts)
@@ -184,17 +239,21 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
       OS << "]\n";
 
     if (Show && ShowIndirectCallTargets) {
+      uint32_t NS = Func.getNumValueSites(IPVK_IndirectCallTarget);
       OS << "    Indirect Target Results: \n";
-      for (size_t I = 0, E = Func.IndirectCallSites.size(); I < E; ++I) {
-        for (auto V : Func.IndirectCallSites[I].ValueData) {
+      for (size_t I = 0; I < NS; ++I) {
+        uint32_t NV = Func.getNumValueDataForSite(IPVK_IndirectCallTarget, I);
+        std::unique_ptr<InstrProfValueData[]> VD =
+            Func.getValueForSite(IPVK_IndirectCallTarget, I);
+        for (uint32_t V = 0; V < NV; V++) {
           OS << "\t[ " << I << ", ";
-          OS << (const char *)V.first << ", " << V.second << " ]\n";
+          OS << (const char *)VD[V].Value << ", " << VD[V].Count << " ]\n";
         }
       }
     }
   }
   if (Reader->hasError())
-    exitWithError(Reader->getError().message(), Filename);
+    exitWithErrorCode(Reader->getError(), Filename);
 
   if (ShowAllFunctions || !ShowFunction.empty())
     OS << "Functions shown: " << ShownFunctions << "\n";
@@ -210,11 +269,11 @@ static int showSampleProfile(std::string Filename, bool ShowCounts,
   using namespace sampleprof;
   auto ReaderOrErr = SampleProfileReader::create(Filename, getGlobalContext());
   if (std::error_code EC = ReaderOrErr.getError())
-    exitWithError(EC.message(), Filename);
+    exitWithErrorCode(EC, Filename);
 
   auto Reader = std::move(ReaderOrErr.get());
   if (std::error_code EC = Reader->read())
-    exitWithError(EC.message(), Filename);
+    exitWithErrorCode(EC, Filename);
 
   if (ShowAllFunctions || ShowFunction.empty())
     Reader->dump(OS);
@@ -255,7 +314,7 @@ static int show_main(int argc, const char *argv[]) {
   std::error_code EC;
   raw_fd_ostream OS(OutputFilename.data(), EC, sys::fs::F_Text);
   if (EC)
-    exitWithError(EC.message(), OutputFilename);
+      exitWithErrorCode(EC, OutputFilename);
 
   if (ShowAllFunctions && !ShowFunction.empty())
     errs() << "warning: -function argument ignored: showing all functions\n";

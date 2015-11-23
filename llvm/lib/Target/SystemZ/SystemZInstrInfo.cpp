@@ -69,8 +69,10 @@ void SystemZInstrInfo::splitMove(MachineBasicBlock::iterator MI,
   MachineOperand &LowOffsetOp = MI->getOperand(2);
   LowOffsetOp.setImm(LowOffsetOp.getImm() + 8);
 
-  // Clear the kill flag for the address reg in the first instruction.
+ // Clear the kill flags for the base and index registers in the first
+ // instruction.
   EarlierMI->getOperand(1).setIsKill(false);
+  EarlierMI->getOperand(3).setIsKill(false);
 
   // Set the opcodes.
   unsigned HighOpcode = getOpcodeForOffset(NewOpcode, HighOffsetOp.getImm());
@@ -490,11 +492,8 @@ SystemZInstrInfo::optimizeCompareInstr(MachineInstr *Compare,
                                        const MachineRegisterInfo *MRI) const {
   assert(!SrcReg2 && "Only optimizing constant comparisons so far");
   bool IsLogical = (Compare->getDesc().TSFlags & SystemZII::IsLogical) != 0;
-  if (Value == 0 &&
-      !IsLogical &&
-      removeIPMBasedCompare(Compare, SrcReg, MRI, &RI))
-    return true;
-  return false;
+  return Value == 0 && !IsLogical &&
+         removeIPMBasedCompare(Compare, SrcReg, MRI, &RI);
 }
 
 // If Opcode is a move that has a conditional variant, return that variant,
@@ -509,10 +508,7 @@ static unsigned getConditionalMove(unsigned Opcode) {
 
 bool SystemZInstrInfo::isPredicable(MachineInstr *MI) const {
   unsigned Opcode = MI->getOpcode();
-  if (STI.hasLoadStoreOnCond() &&
-      getConditionalMove(Opcode))
-    return true;
-  return false;
+  return STI.hasLoadStoreOnCond() && getConditionalMove(Opcode);
 }
 
 bool SystemZInstrInfo::
