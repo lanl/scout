@@ -97,7 +97,7 @@ ARMBaseInstrInfo::ARMBaseInstrInfo(const ARMSubtarget& STI)
     Subtarget(STI) {
   for (unsigned i = 0, e = array_lengthof(ARM_MLxTable); i != e; ++i) {
     if (!MLxEntryMap.insert(std::make_pair(ARM_MLxTable[i].MLxOpc, i)).second)
-      assert(false && "Duplicated entries?");
+      llvm_unreachable("Duplicated entries?");
     MLxHazardOpcodes.insert(ARM_MLxTable[i].AddSubOpc);
     MLxHazardOpcodes.insert(ARM_MLxTable[i].MulOpc);
   }
@@ -1379,9 +1379,9 @@ static unsigned duplicateCPV(MachineFunction &MF, unsigned &CPI) {
   // instructions, so that's probably OK, but is PIC always correct when
   // we get here?
   if (ACPV->isGlobalValue())
-    NewCPV = ARMConstantPoolConstant::
-      Create(cast<ARMConstantPoolConstant>(ACPV)->getGV(), PCLabelId,
-             ARMCP::CPValue, 4);
+    NewCPV = ARMConstantPoolConstant::Create(
+        cast<ARMConstantPoolConstant>(ACPV)->getGV(), PCLabelId, ARMCP::CPValue,
+        4, ACPV->getModifier(), ACPV->mustAddCurrentAddress());
   else if (ACPV->isExtSymbol())
     NewCPV = ARMConstantPoolSymbol::
       Create(MF.getFunction()->getContext(),

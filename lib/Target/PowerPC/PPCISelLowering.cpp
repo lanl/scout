@@ -552,8 +552,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v16i8, Legal);
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v8i16, Legal);
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v4i32, Legal);
-        // FIXME: this is causing bootstrap failures, disable temporarily
-        //setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v2i64, Legal);
+        setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v2i64, Legal);
         setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v16i8, Legal);
         setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v8i16, Legal);
         setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v4i32, Legal);
@@ -828,15 +827,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setLibcallName(RTLIB::SRA_I128, nullptr);
   }
 
-  if (isPPC64) {
-    setStackPointerRegisterToSaveRestore(PPC::X1);
-    setExceptionPointerRegister(PPC::X3);
-    setExceptionSelectorRegister(PPC::X4);
-  } else {
-    setStackPointerRegisterToSaveRestore(PPC::R1);
-    setExceptionPointerRegister(PPC::R3);
-    setExceptionSelectorRegister(PPC::R4);
-  }
+  setStackPointerRegisterToSaveRestore(isPPC64 ? PPC::X1 : PPC::R1);
 
   // We have target-specific dag combine patterns for the following nodes:
   setTargetDAGCombine(ISD::SINT_TO_FP);
@@ -10923,17 +10914,19 @@ PPCTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
         return std::make_pair(0U, &PPC::QFRCRegClass);
       if (VT == MVT::v4f32 && Subtarget.hasQPX())
         return std::make_pair(0U, &PPC::QSRCRegClass);
-      return std::make_pair(0U, &PPC::VRRCRegClass);
+      if (Subtarget.hasAltivec())
+        return std::make_pair(0U, &PPC::VRRCRegClass);
     case 'y':   // crrc
       return std::make_pair(0U, &PPC::CRRCRegClass);
     }
-  } else if (Constraint == "wc") { // an individual CR bit.
+  } else if (Constraint == "wc" && Subtarget.useCRBits()) {
+    // An individual CR bit.
     return std::make_pair(0U, &PPC::CRBITRCRegClass);
-  } else if (Constraint == "wa" || Constraint == "wd" ||
-             Constraint == "wf") {
+  } else if ((Constraint == "wa" || Constraint == "wd" ||
+             Constraint == "wf") && Subtarget.hasVSX()) {
     return std::make_pair(0U, &PPC::VSRCRegClass);
-  } else if (Constraint == "ws") {
-    if (VT == MVT::f32)
+  } else if (Constraint == "ws" && Subtarget.hasVSX()) {
+    if (VT == MVT::f32 && Subtarget.hasP8Vector())
       return std::make_pair(0U, &PPC::VSSRCRegClass);
     else
       return std::make_pair(0U, &PPC::VSFRCRegClass);
@@ -11529,6 +11522,16 @@ PPCTargetLowering::getScratchRegisters(CallingConv::ID) const {
   };
 
   return ScratchRegs;
+}
+
+unsigned PPCTargetLowering::getExceptionPointerRegister(
+    const Constant *PersonalityFn) const {
+  return Subtarget.isPPC64() ? PPC::X3 : PPC::R3;
+}
+
+unsigned PPCTargetLowering::getExceptionSelectorRegister(
+    const Constant *PersonalityFn) const {
+  return Subtarget.isPPC64() ? PPC::X4 : PPC::R4;
 }
 
 bool

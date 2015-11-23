@@ -403,6 +403,8 @@ namespace llvm {
       VFPCLASS, 
       // Broadcast scalar to vector
       VBROADCAST,
+      // Broadcast mask to vector
+      VBROADCASTM,
       // Broadcast subvector to vector
       SUBV_BROADCAST,
       // Insert/Extract vector element
@@ -869,7 +871,7 @@ namespace llvm {
     /// register, not on the X87 floating point stack.
     bool isScalarFPTypeInSSEReg(EVT VT) const {
       return (VT == MVT::f64 && X86ScalarSSEf64) || // f64 is when SSE2
-      (VT == MVT::f32 && X86ScalarSSEf32);   // f32 is when SSE1
+             (VT == MVT::f32 && X86ScalarSSEf32);   // f32 is when SSE1
     }
 
     /// \brief Returns true if it is beneficial to convert a load of a constant
@@ -889,6 +891,16 @@ namespace llvm {
     unsigned getRegisterByName(const char* RegName, EVT VT,
                                SelectionDAG &DAG) const override;
 
+    /// If a physical register, this returns the register that receives the
+    /// exception address on entry to an EH pad.
+    unsigned
+    getExceptionPointerRegister(const Constant *PersonalityFn) const override;
+
+    /// If a physical register, this returns the register that receives the
+    /// exception typeid on entry to a landing pad.
+    unsigned
+    getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
+
     /// This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
     FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
@@ -903,8 +915,7 @@ namespace llvm {
     /// Return true if the target stores SafeStack pointer at a fixed offset in
     /// some non-standard address space, and populates the address space and
     /// offset as appropriate.
-    bool getSafeStackPointerLocation(unsigned &AddressSpace,
-                                     unsigned &Offset) const override;
+    Value *getSafeStackPointerLocation(IRBuilder<> &IRB) const override;
 
     SDValue BuildFILD(SDValue Op, EVT SrcVT, SDValue Chain, SDValue StackSlot,
                       SelectionDAG &DAG) const;
@@ -916,6 +927,9 @@ namespace llvm {
     LegalizeTypeAction getPreferredVectorAction(EVT VT) const override;
 
     bool isIntDivCheap(EVT VT, AttributeSet Attr) const override;
+
+    void markInRegArguments(SelectionDAG &DAG, TargetLowering::ArgListTy& Args)
+      const override;
 
   protected:
     std::pair<const TargetRegisterClass *, uint8_t>
@@ -1009,6 +1023,7 @@ namespace llvm {
     SDValue LowerToBT(SDValue And, ISD::CondCode CC,
                       SDLoc dl, SelectionDAG &DAG) const;
     SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerSETCCE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
@@ -1085,6 +1100,12 @@ namespace llvm {
 
     MachineBasicBlock *EmitLoweredWinAlloca(MachineInstr *MI,
                                               MachineBasicBlock *BB) const;
+
+    MachineBasicBlock *EmitLoweredCatchRet(MachineInstr *MI,
+                                           MachineBasicBlock *BB) const;
+
+    MachineBasicBlock *EmitLoweredCatchPad(MachineInstr *MI,
+                                           MachineBasicBlock *BB) const;
 
     MachineBasicBlock *EmitLoweredSegAlloca(MachineInstr *MI,
                                             MachineBasicBlock *BB) const;

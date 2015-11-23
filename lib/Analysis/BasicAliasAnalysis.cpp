@@ -616,15 +616,18 @@ ModRefInfo BasicAAResult::getArgModRefInfo(ImmutableCallSite CS,
   }
   // FIXME: Handle memset_pattern4 and memset_pattern8 also.
 
+  if (CS.paramHasAttr(ArgIdx + 1, Attribute::ReadOnly))
+    return MRI_Ref;
+
+  if (CS.paramHasAttr(ArgIdx + 1, Attribute::ReadNone))
+    return MRI_NoModRef;
+
   return AAResultBase::getArgModRefInfo(CS, ArgIdx);
 }
 
 static bool isAssumeIntrinsic(ImmutableCallSite CS) {
   const IntrinsicInst *II = dyn_cast<IntrinsicInst>(CS.getInstruction());
-  if (II && II->getIntrinsicID() == Intrinsic::assume)
-    return true;
-
-  return false;
+  return II && II->getIntrinsicID() == Intrinsic::assume;
 }
 
 #ifndef NDEBUG
@@ -1274,7 +1277,7 @@ AliasResult BasicAAResult::aliasPHI(const PHINode *PN, uint64_t PNSize,
   return Alias;
 }
 
-/// Provideis a bunch of ad-hoc rules to disambiguate in common cases, such as
+/// Provides a bunch of ad-hoc rules to disambiguate in common cases, such as
 /// array references.
 AliasResult BasicAAResult::aliasCheck(const Value *V1, uint64_t V1Size,
                                       AAMDNodes V1AAInfo, const Value *V2,
@@ -1538,11 +1541,10 @@ bool BasicAAResult::constantOffsetHeuristic(
 
   // If we've been sext'ed then zext'd the maximum difference between Var0 and
   // Var1 is possible to calculate, but we're just interested in the absolute
-  // minumum difference between the two. The minimum distance may occur due to
+  // minimum difference between the two. The minimum distance may occur due to
   // wrapping; consider "add i3 %i, 5": if %i == 7 then 7 + 5 mod 8 == 4, and so
   // the minimum distance between %i and %i + 5 is 3.
-  APInt MinDiff = V0Offset - V1Offset,
-        Wrapped = APInt::getMaxValue(Width) - MinDiff + APInt(Width, 1);
+  APInt MinDiff = V0Offset - V1Offset, Wrapped = -MinDiff;
   MinDiff = APIntOps::umin(MinDiff, Wrapped);
   uint64_t MinDiffBytes = MinDiff.getZExtValue() * std::abs(Var0.Scale);
 
@@ -1566,6 +1568,10 @@ BasicAAResult BasicAA::run(Function &F, AnalysisManager<Function> *AM) {
                        AM->getResult<AssumptionAnalysis>(F),
                        AM->getCachedResult<DominatorTreeAnalysis>(F),
                        AM->getCachedResult<LoopAnalysis>(F));
+}
+
+BasicAAWrapperPass::BasicAAWrapperPass() : FunctionPass(ID) {
+    initializeBasicAAWrapperPassPass(*PassRegistry::getPassRegistry());
 }
 
 char BasicAAWrapperPass::ID = 0;

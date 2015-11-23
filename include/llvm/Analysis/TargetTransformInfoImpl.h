@@ -213,6 +213,10 @@ public:
 
   bool isLegalMaskedLoad(Type *DataType) { return false; }
 
+  bool isLegalMaskedScatter(Type *DataType) { return false; }
+
+  bool isLegalMaskedGather(Type *DataType) { return false; }
+
   int getScalingFactorCost(Type *Ty, GlobalValue *BaseGV, int64_t BaseOffset,
                            bool HasBaseReg, int64_t Scale, unsigned AddrSpace) {
     // Guess that all legal addressing mode are free.
@@ -223,8 +227,6 @@ public:
   }
 
   bool isTruncateFree(Type *Ty1, Type *Ty2) { return false; }
-
-  bool isZExtFree(Type *Ty1, Type *Ty2) { return false; }
 
   bool isProfitableToHoist(Instruction *I) { return true; }
 

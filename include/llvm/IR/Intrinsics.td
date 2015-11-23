@@ -319,7 +319,15 @@ def int_instrprof_increment : Intrinsic<[],
                                         [llvm_ptr_ty, llvm_i64_ty,
                                          llvm_i32_ty, llvm_i32_ty],
                                         []>;
-                                        
+
+// A call to profile runtime for value profiling of target expressions
+// through instrumentation based profiling.
+def int_instrprof_value_profile : Intrinsic<[],
+                                            [llvm_ptr_ty, llvm_i64_ty,
+                                             llvm_i64_ty, llvm_i32_ty,
+                                             llvm_i32_ty],
+                                            []>;
+
 //===------------------- Standard C Library Intrinsics --------------------===//
 //
 
@@ -400,6 +408,7 @@ let Properties = [IntrNoMem] in {
   def int_ctpop: Intrinsic<[llvm_anyint_ty], [LLVMMatchType<0>]>;
   def int_ctlz : Intrinsic<[llvm_anyint_ty], [LLVMMatchType<0>, llvm_i1_ty]>;
   def int_cttz : Intrinsic<[llvm_anyint_ty], [LLVMMatchType<0>, llvm_i1_ty]>;
+  def int_bitreverse : Intrinsic<[llvm_anyint_ty], [LLVMMatchType<0>]>;
 }
 
 //===------------------------ Debugger Intrinsics -------------------------===//
@@ -551,9 +560,11 @@ def int_experimental_gc_statepoint : Intrinsic<[llvm_i32_ty],
                                 llvm_i32_ty, llvm_vararg_ty],
                                 [Throws]>;
 
-def int_experimental_gc_result   : Intrinsic<[llvm_any_ty], [llvm_i32_ty]>;
+def int_experimental_gc_result   : Intrinsic<[llvm_any_ty], [llvm_i32_ty],
+                                             [IntrReadMem]>;
 def int_experimental_gc_relocate : Intrinsic<[llvm_anyptr_ty],
-                                [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty]>;
+                                [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty],
+                                [IntrReadMem]>;
 
 // Deprecated: will be removed in a couple of weeks
 def int_experimental_gc_result_int : Intrinsic<[llvm_anyint_ty], [llvm_i32_ty]>;

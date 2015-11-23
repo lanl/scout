@@ -55,6 +55,7 @@ class JRC16_MMR6_ENC: POOL16C_JALRC_FM_MM16R6<0x3>;
 class JRCADDIUSP_MMR6_ENC : POOL16C_JRCADDIUSP_FM_MM16R6<0x13>;
 class LSA_MMR6_ENC : POOL32A_LSA_FM<0b001111>;
 class LWPC_MMR6_ENC  : PCREL19_FM_MMR6<0b01>;
+class LWM16_MMR6_ENC : POOL16C_LWM_SWM_FM_MM16R6<0x2>;
 class MOD_MMR6_ENC : ARITH_FM_MMR6<"mod", 0x158>;
 class MODU_MMR6_ENC : ARITH_FM_MMR6<"modu", 0x1d8>;
 class MUL_MMR6_ENC : ARITH_FM_MMR6<"mul", 0x18>;
@@ -65,15 +66,20 @@ class NOR_MMR6_ENC : ARITH_FM_MMR6<"nor", 0x2d0>;
 class OR_MMR6_ENC : ARITH_FM_MMR6<"or", 0x290>;
 class ORI_MMR6_ENC : ADDI_FM_MMR6<"ori", 0x14>;
 class PREF_MMR6_ENC : CACHE_PREF_FM_MMR6<0b011000, 0b0010>;
+class SB16_MMR6_ENC : LOAD_STORE_FM_MM16<0x22>;
 class SEB_MMR6_ENC : SIGN_EXTEND_FM_MMR6<"seb", 0b0010101100>;
 class SEH_MMR6_ENC : SIGN_EXTEND_FM_MMR6<"seh", 0b0011101100>;
 class SELEQZ_MMR6_ENC : POOL32A_FM_MMR6<0b0101000000>;
 class SELNEZ_MMR6_ENC : POOL32A_FM_MMR6<0b0110000000>;
+class SH16_MMR6_ENC : LOAD_STORE_FM_MM16<0x2a>;
 class SLL_MMR6_ENC : SHIFT_MMR6_ENC<"sll", 0x00, 0b0>;
 class SUB_MMR6_ENC : ARITH_FM_MMR6<"sub", 0x190>;
 class SUBU_MMR6_ENC : ARITH_FM_MMR6<"subu", 0x1d0>;
 class SW_MMR6_ENC : SW32_FM_MMR6<"sw", 0x3e>;
 class SWE_MMR6_ENC : POOL32C_SWE_FM_MMR6<"swe", 0x18, 0xa, 0x7>;
+class SW16_MMR6_ENC : LOAD_STORE_FM_MM16<0x3a>;
+class SWM16_MMR6_ENC : POOL16C_LWM_SWM_FM_MM16R6<0xa>;
+class SWSP_MMR6_ENC : LOAD_STORE_SP_FM_MM16<0x32>;
 class PREFE_MMR6_ENC : POOL32C_ST_EVA_FM_MMR6<0b011000, 0b010>;
 class CACHEE_MMR6_ENC : POOL32C_ST_EVA_FM_MMR6<0b011000, 0b011>;
 class WRPGPR_MMR6_ENC : POOL32A_WRPGPR_WSBH_FM_MMR6<0x3c5>;
@@ -82,6 +88,14 @@ class LB_MMR6_ENC : LB32_FM_MMR6;
 class LBU_MMR6_ENC : LBU32_FM_MMR6;
 class LBE_MMR6_ENC : POOL32C_LB_LBU_FM_MMR6<0b100>;
 class LBUE_MMR6_ENC : POOL32C_LB_LBU_FM_MMR6<0b000>;
+class PAUSE_MMR6_ENC : POOL32A_PAUSE_FM_MMR6<"pause", 0b00101>;
+class RDHWR_MMR6_ENC : POOL32A_RDHWR_FM_MMR6;
+class WAIT_MMR6_ENC : WAIT_FM_MM, MMR6Arch<"wait">;
+class SSNOP_MMR6_ENC : BARRIER_FM_MM<0x1>, MMR6Arch<"ssnop">;
+class SYNC_MMR6_ENC : POOL32A_SYNC_FM_MMR6;
+class SYNCI_MMR6_ENC : POOL32I_SYNCI_FM_MMR6, MMR6Arch<"synci">;
+class RDPGPR_MMR6_ENC : POOL32A_RDPGPR_FM_MMR6<0b1110000101>;
+class SDBBP_MMR6_ENC : SDBBP_FM_MM, MMR6Arch<"sdbbp">;
 class XOR_MMR6_ENC : ARITH_FM_MMR6<"xor", 0x310>;
 class XORI_MMR6_ENC : ADDI_FM_MMR6<"xori", 0x1c>;
 class ABS_S_MMR6_ENC : POOL32F_ABS_FM_MMR6<"abs.s", 0, 0b0001101>;
@@ -418,7 +432,7 @@ class LSA_MMR6_DESC_BASE<string instr_asm, RegisterOperand GPROpnd,
   list<dag> Pattern = [];
 }
 
-class LSA_MMR6_DESC : LSA_MMR6_DESC_BASE<"lsa", GPR32Opnd, uimm2>;
+class LSA_MMR6_DESC : LSA_MMR6_DESC_BASE<"lsa", GPR32Opnd, uimm2_plus1>;
 
 class PCREL_MMR6_DESC_BASE<string instr_asm, RegisterOperand GPROpnd,
                            Operand ImmOpnd> : MMR6Arch<instr_asm> {
@@ -441,6 +455,18 @@ class SELEQNE_Z_MMR6_DESC_BASE<string instr_asm, RegisterOperand GPROpnd>
 
 class SELEQZ_MMR6_DESC : SELEQNE_Z_MMR6_DESC_BASE<"seleqz", GPR32Opnd>;
 class SELNEZ_MMR6_DESC : SELEQNE_Z_MMR6_DESC_BASE<"selnez", GPR32Opnd>;
+class PAUSE_MMR6_DESC : Barrier<"pause">;
+class RDHWR_MMR6_DESC : MMR6Arch<"rdhwr">, MipsR6Inst {
+  dag OutOperandList = (outs GPR32Opnd:$rt);
+  dag InOperandList = (ins HWRegsOpnd:$rs, uimm3:$sel);
+  string AsmString = !strconcat("rdhwr", "\t$rt, $rs, $sel");
+  list<dag> Pattern = [];
+  InstrItinClass Itinerary = II_RDHWR;
+  Format Form = FrmR;
+}
+
+class WAIT_MMR6_DESC : WaitMM<"wait">;
+class SSNOP_MMR6_DESC : Barrier<"ssnop">;
 class SLL_MMR6_DESC : shift_rotate_imm<"sll", uimm5, GPR32Opnd, II_SLL>;
 class DIV_MMR6_DESC : ArithLogicR<"div", GPR32Opnd>;
 class DIVU_MMR6_DESC : ArithLogicR<"divu", GPR32Opnd>;
@@ -768,6 +794,78 @@ class LUI_MMR6_DESC : IsAsCheapAsAMove, MMR6Arch<"lui">, MipsR6Inst{
   Format Form = FrmI;
 }
 
+class SYNC_MMR6_DESC : MMR6Arch<"sync">, MipsR6Inst {
+  dag OutOperandList = (outs);
+  dag InOperandList = (ins i32imm:$stype);
+  string AsmString = !strconcat("sync", "\t$stype");
+  list<dag> Pattern = [(MipsSync imm:$stype)];
+  InstrItinClass Itinerary = NoItinerary;
+  bit HasSideEffects = 1;
+}
+
+class SYNCI_MMR6_DESC : SYNCI_FT<"synci"> {
+  let DecoderMethod = "DecodeSynciR6";
+}
+
+class RDPGPR_MMR6_DESC : MMR6Arch<"rdpgpr">, MipsR6Inst {
+  dag OutOperandList = (outs GPR32Opnd:$rt);
+  dag InOperandList = (ins GPR32Opnd:$rd);
+  string AsmString = !strconcat("rdpgpr", "\t$rt, $rd");
+}
+
+class SDBBP_MMR6_DESC : MipsR6Inst {
+  dag OutOperandList = (outs);
+  dag InOperandList = (ins uimm20:$code_);
+  string AsmString = !strconcat("sdbbp", "\t$code_");
+  list<dag> Pattern = [];
+}
+
+class LWM16_MMR6_DESC
+    : MicroMipsInst16<(outs reglist16:$rt), (ins mem_mm_4sp:$addr),
+                      !strconcat("lwm16", "\t$rt, $addr"), [],
+                      NoItinerary, FrmI>,
+      MMR6Arch<"lwm16">, MicroMipsR6Inst16 {
+  let DecoderMethod = "DecodeMemMMReglistImm4Lsl2";
+  let mayLoad = 1;
+  InstrItinClass Itin = NoItinerary;
+  ComplexPattern Addr = addr;
+}
+
+class SWM16_MMR6_DESC
+    : MicroMipsInst16<(outs), (ins reglist16:$rt, mem_mm_4sp:$addr),
+                      !strconcat("swm16", "\t$rt, $addr"), [],
+                      NoItinerary, FrmI>,
+      MMR6Arch<"swm16">, MicroMipsR6Inst16 {
+  let DecoderMethod = "DecodeMemMMReglistImm4Lsl2";
+  let mayStore = 1;
+  InstrItinClass Itin = NoItinerary;
+  ComplexPattern Addr = addr;
+}
+
+class SB16_MMR6_DESC_BASE<string opstr, DAGOperand RTOpnd, DAGOperand RO,
+                          SDPatternOperator OpNode, InstrItinClass Itin,
+                          Operand MemOpnd>
+    : MicroMipsInst16<(outs), (ins RTOpnd:$rt, MemOpnd:$addr),
+                      !strconcat(opstr, "\t$rt, $addr"), [], Itin, FrmI>,
+      MMR6Arch<opstr>, MicroMipsR6Inst16 {
+  let DecoderMethod = "DecodeMemMMImm4";
+  let mayStore = 1;
+}
+class SB16_MMR6_DESC : SB16_MMR6_DESC_BASE<"sb16", GPRMM16OpndZero, GPRMM16Opnd,
+                                           truncstorei8, II_SB, mem_mm_4>;
+class SH16_MMR6_DESC : SB16_MMR6_DESC_BASE<"sh16", GPRMM16OpndZero, GPRMM16Opnd,
+                                           truncstorei16, II_SH, mem_mm_4_lsl1>;
+class SW16_MMR6_DESC : SB16_MMR6_DESC_BASE<"sw16", GPRMM16OpndZero, GPRMM16Opnd,
+                                           store, II_SW, mem_mm_4_lsl2>;
+
+class SWSP_MMR6_DESC
+    : MicroMipsInst16<(outs), (ins GPR32Opnd:$rt, mem_mm_sp_imm5_lsl2:$offset),
+                      !strconcat("sw", "\t$rt, $offset"), [], II_SW, FrmI>,
+      MMR6Arch<"sw">, MicroMipsR6Inst16 {
+  let DecoderMethod = "DecodeMemMMSPImm5Lsl2";
+  let mayStore = 1;
+}
+
 //===----------------------------------------------------------------------===//
 //
 // Instruction Definitions
@@ -828,6 +926,7 @@ def JRCADDIUSP_MMR6 : R6MMR6Rel, JRCADDIUSP_MMR6_DESC, JRCADDIUSP_MMR6_ENC,
                       ISA_MICROMIPS32R6;
 def LSA_MMR6 : R6MMR6Rel, LSA_MMR6_ENC, LSA_MMR6_DESC, ISA_MICROMIPS32R6;
 def LWPC_MMR6 : R6MMR6Rel, LWPC_MMR6_ENC, LWPC_MMR6_DESC, ISA_MICROMIPS32R6;
+def LWM16_MMR6 : StdMMR6Rel, LWM16_MMR6_DESC, LWM16_MMR6_ENC, ISA_MICROMIPS32R6;
 def MOD_MMR6 : R6MMR6Rel, MOD_MMR6_DESC, MOD_MMR6_ENC, ISA_MICROMIPS32R6;
 def MODU_MMR6 : R6MMR6Rel, MODU_MMR6_DESC, MODU_MMR6_ENC, ISA_MICROMIPS32R6;
 def MUL_MMR6 : R6MMR6Rel, MUL_MMR6_DESC, MUL_MMR6_ENC, ISA_MICROMIPS32R6;
@@ -838,15 +937,20 @@ def NOR_MMR6 : StdMMR6Rel, NOR_MMR6_DESC, NOR_MMR6_ENC, ISA_MICROMIPS32R6;
 def OR_MMR6 : StdMMR6Rel, OR_MMR6_DESC, OR_MMR6_ENC, ISA_MICROMIPS32R6;
 def ORI_MMR6 : StdMMR6Rel, ORI_MMR6_DESC, ORI_MMR6_ENC, ISA_MICROMIPS32R6;
 def PREF_MMR6 : R6MMR6Rel, PREF_MMR6_ENC, PREF_MMR6_DESC, ISA_MICROMIPS32R6;
+def SB16_MMR6 : StdMMR6Rel, SB16_MMR6_DESC, SB16_MMR6_ENC, ISA_MICROMIPS32R6;
 def SEB_MMR6 : StdMMR6Rel, SEB_MMR6_DESC, SEB_MMR6_ENC, ISA_MICROMIPS32R6;
 def SEH_MMR6 : StdMMR6Rel, SEH_MMR6_DESC, SEH_MMR6_ENC, ISA_MICROMIPS32R6;
 def SELEQZ_MMR6 : R6MMR6Rel, SELEQZ_MMR6_ENC, SELEQZ_MMR6_DESC,
                   ISA_MICROMIPS32R6;
 def SELNEZ_MMR6 : R6MMR6Rel, SELNEZ_MMR6_ENC, SELNEZ_MMR6_DESC,
                   ISA_MICROMIPS32R6;
+def SH16_MMR6 : StdMMR6Rel, SH16_MMR6_DESC, SH16_MMR6_ENC, ISA_MICROMIPS32R6;
 def SLL_MMR6 : StdMMR6Rel, SLL_MMR6_DESC, SLL_MMR6_ENC, ISA_MICROMIPS32R6;
 def SUB_MMR6 : StdMMR6Rel, SUB_MMR6_DESC, SUB_MMR6_ENC, ISA_MICROMIPS32R6;
 def SUBU_MMR6 : StdMMR6Rel, SUBU_MMR6_DESC, SUBU_MMR6_ENC, ISA_MICROMIPS32R6;
+def SW16_MMR6 : StdMMR6Rel, SW16_MMR6_DESC, SW16_MMR6_ENC, ISA_MICROMIPS32R6;
+def SWM16_MMR6 : StdMMR6Rel, SWM16_MMR6_DESC, SWM16_MMR6_ENC, ISA_MICROMIPS32R6;
+def SWSP_MMR6 : StdMMR6Rel, SWSP_MMR6_DESC, SWSP_MMR6_ENC, ISA_MICROMIPS32R6;
 def PREFE_MMR6 : StdMMR6Rel, PREFE_MMR6_ENC, PREFE_MMR6_DESC, ISA_MICROMIPS32R6;
 def CACHEE_MMR6 : StdMMR6Rel, CACHEE_MMR6_ENC, CACHEE_MMR6_DESC,
                   ISA_MICROMIPS32R6;
@@ -857,6 +961,15 @@ def LB_MMR6 : R6MMR6Rel, LB_MMR6_ENC, LB_MMR6_DESC, ISA_MICROMIPS32R6;
 def LBU_MMR6 : R6MMR6Rel, LBU_MMR6_ENC, LBU_MMR6_DESC, ISA_MICROMIPS32R6;
 def LBE_MMR6 : R6MMR6Rel, LBE_MMR6_ENC, LBE_MMR6_DESC, ISA_MICROMIPS32R6;
 def LBUE_MMR6 : R6MMR6Rel, LBUE_MMR6_ENC, LBUE_MMR6_DESC, ISA_MICROMIPS32R6;
+def PAUSE_MMR6 : StdMMR6Rel, PAUSE_MMR6_DESC, PAUSE_MMR6_ENC, ISA_MICROMIPS32R6;
+def RDHWR_MMR6 : R6MMR6Rel, RDHWR_MMR6_DESC, RDHWR_MMR6_ENC, ISA_MICROMIPS32R6;
+def WAIT_MMR6 : StdMMR6Rel, WAIT_MMR6_DESC, WAIT_MMR6_ENC, ISA_MICROMIPS32R6;
+def SSNOP_MMR6 : StdMMR6Rel, SSNOP_MMR6_DESC, SSNOP_MMR6_ENC, ISA_MICROMIPS32R6;
+def SYNC_MMR6 : StdMMR6Rel, SYNC_MMR6_DESC, SYNC_MMR6_ENC, ISA_MICROMIPS32R6;
+def SYNCI_MMR6 : StdMMR6Rel, SYNCI_MMR6_DESC, SYNCI_MMR6_ENC, ISA_MICROMIPS32R6;
+def RDPGPR_MMR6 : R6MMR6Rel, RDPGPR_MMR6_DESC, RDPGPR_MMR6_ENC,
+                  ISA_MICROMIPS32R6;
+def SDBBP_MMR6 : R6MMR6Rel, SDBBP_MMR6_DESC, SDBBP_MMR6_ENC, ISA_MICROMIPS32R6;
 def XOR_MMR6 : StdMMR6Rel, XOR_MMR6_DESC, XOR_MMR6_ENC, ISA_MICROMIPS32R6;
 def XORI_MMR6 : StdMMR6Rel, XORI_MMR6_DESC, XORI_MMR6_ENC, ISA_MICROMIPS32R6;
 let DecoderMethod = "DecodeMemMMImm16" in {
@@ -1015,3 +1128,17 @@ def B_MMR6_Pseudo : MipsAsmPseudoInst<(outs), (ins brtarget_mm:$offset),
                                       !strconcat("b", "\t$offset")> {
   string DecoderNamespace = "MicroMipsR6";
 }
+def : MipsInstAlias<"sync", (SYNC_MMR6 0), 1>, ISA_MICROMIPS32R6;
+def : MipsInstAlias<"sdbbp", (SDBBP_MMR6 0), 1>, ISA_MICROMIPS32R6;
+def : MipsInstAlias<"rdhwr $rt, $rs",
+                    (RDHWR_MMR6 GPR32Opnd:$rt, HWRegsOpnd:$rs, 0), 1>,
+                    ISA_MICROMIPS32R6;
+
+//===----------------------------------------------------------------------===//
+//
+// MicroMips arbitrary patterns that map to one or more instructions
+//
+//===----------------------------------------------------------------------===//
+
+def : MipsPat<(store GPRMM16:$src, addrimm4lsl2:$addr),
+              (SW16_MMR6 GPRMM16:$src, addrimm4lsl2:$addr)>, ISA_MICROMIPS32R6;
