@@ -83,7 +83,7 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::Plat
     m_process_sp (),
     m_search_filter_sp (),
     m_image_search_paths (ImageSearchPathsChanged, this),
-    m_ast_importer_ap (),
+    m_ast_importer_sp (),
     m_source_manager_ap(),
     m_stop_hooks (),
     m_stop_hook_next_id (0),
@@ -417,11 +417,22 @@ Target::CreateBreakpoint (lldb::addr_t addr, bool internal, bool hardware)
 }
 
 BreakpointSP
-Target::CreateBreakpoint (Address &addr, bool internal, bool hardware)
+Target::CreateBreakpoint (const Address &addr, bool internal, bool hardware)
 {
     SearchFilterSP filter_sp(new SearchFilterForUnconstrainedSearches (shared_from_this()));
     BreakpointResolverSP resolver_sp (new BreakpointResolverAddress (NULL, addr));
     return CreateBreakpoint (filter_sp, resolver_sp, internal, hardware, false);
+}
+
+lldb::BreakpointSP
+Target::CreateAddressInModuleBreakpoint (lldb::addr_t file_addr,
+                                         bool internal,
+                                         const FileSpec *file_spec,
+                                         bool request_hardware)
+{
+    SearchFilterSP filter_sp(new SearchFilterForUnconstrainedSearches (shared_from_this()));
+    BreakpointResolverSP resolver_sp (new BreakpointResolverAddress (NULL, file_addr, file_spec));
+    return CreateBreakpoint (filter_sp, resolver_sp, internal, request_hardware, false);
 }
 
 BreakpointSP
@@ -582,6 +593,7 @@ BreakpointSP
 Target::CreateFuncRegexBreakpoint (const FileSpecList *containingModules, 
                                    const FileSpecList *containingSourceFiles,
                                    RegularExpression &func_regex, 
+                                   lldb::LanguageType requested_language,
                                    LazyBool skip_prologue,
                                    bool internal,
                                    bool hardware)
@@ -591,7 +603,8 @@ Target::CreateFuncRegexBreakpoint (const FileSpecList *containingModules,
       (skip_prologue == eLazyBoolCalculate) ? GetSkipPrologue()
                                             : static_cast<bool>(skip_prologue);
     BreakpointResolverSP resolver_sp(new BreakpointResolverName (NULL, 
-                                                                 func_regex, 
+                                                                 func_regex,
+                                                                 requested_language,
                                                                  skip));
 
     return CreateBreakpoint (filter_sp, resolver_sp, internal, hardware, true);
@@ -1176,7 +1189,7 @@ Target::ClearModules(bool delete_locations)
     m_section_load_history.Clear();
     m_images.Clear();
     m_scratch_type_system_map.Clear();
-    m_ast_importer_ap.reset();
+    m_ast_importer_sp.reset();
 }
 
 void
@@ -1241,44 +1254,70 @@ bool
 Target::SetArchitecture (const ArchSpec &arch_spec)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TARGET));
-    if (m_arch.IsCompatibleMatch(arch_spec) || !m_arch.IsValid())
+    bool missing_local_arch = (false == m_arch.IsValid());
+    bool replace_local_arch = true;
+    bool compatible_local_arch = false;
+    ArchSpec other(arch_spec);
+
+    if (!missing_local_arch)
     {
-        // If we haven't got a valid arch spec, or the architectures are
-        // compatible, so just update the architecture. Architectures can be
-        // equal, yet the triple OS and vendor might change, so we need to do
-        // the assignment here just in case.
-        m_arch = arch_spec;
+        if (m_arch.IsCompatibleMatch(arch_spec))
+        {
+            other.MergeFrom(m_arch);
+            
+            if (m_arch.IsCompatibleMatch(other))
+            {
+                compatible_local_arch = true;
+                bool arch_changed, vendor_changed, os_changed, os_ver_changed, env_changed;
+                
+                m_arch.PiecewiseTripleCompare(other,
+                                              arch_changed,
+                                              vendor_changed,
+                                              os_changed,
+                                              os_ver_changed,
+                                              env_changed);
+                
+                if (!arch_changed && !vendor_changed && !os_changed)
+                    replace_local_arch = false;
+            }
+        }
+    }
+
+    if (compatible_local_arch || missing_local_arch)
+    {
+        // If we haven't got a valid arch spec, or the architectures are compatible
+        // update the architecture, unless the one we already have is more specified
+        if (replace_local_arch)
+            m_arch = other;
         if (log)
-            log->Printf ("Target::SetArchitecture setting architecture to %s (%s)", arch_spec.GetArchitectureName(), arch_spec.GetTriple().getTriple().c_str());
+            log->Printf ("Target::SetArchitecture set architecture to %s (%s)", m_arch.GetArchitectureName(), m_arch.GetTriple().getTriple().c_str());
         return true;
     }
-    else
-    {
-        // If we have an executable file, try to reset the executable to the desired architecture
-        if (log)
-          log->Printf ("Target::SetArchitecture changing architecture to %s (%s)", arch_spec.GetArchitectureName(), arch_spec.GetTriple().getTriple().c_str());
-        m_arch = arch_spec;
-        ModuleSP executable_sp = GetExecutableModule ();
+    
+    // If we have an executable file, try to reset the executable to the desired architecture
+    if (log)
+      log->Printf ("Target::SetArchitecture changing architecture to %s (%s)", arch_spec.GetArchitectureName(), arch_spec.GetTriple().getTriple().c_str());
+    m_arch = other;
+    ModuleSP executable_sp = GetExecutableModule ();
 
-        ClearModules(true);
-        // Need to do something about unsetting breakpoints.
-        
-        if (executable_sp)
+    ClearModules(true);
+    // Need to do something about unsetting breakpoints.
+    
+    if (executable_sp)
+    {
+        if (log)
+          log->Printf("Target::SetArchitecture Trying to select executable file architecture %s (%s)", arch_spec.GetArchitectureName(), arch_spec.GetTriple().getTriple().c_str());
+        ModuleSpec module_spec (executable_sp->GetFileSpec(), other);
+        Error error = ModuleList::GetSharedModule (module_spec, 
+                                                   executable_sp, 
+                                                   &GetExecutableSearchPaths(),
+                                                   NULL, 
+                                                   NULL);
+                                      
+        if (!error.Fail() && executable_sp)
         {
-            if (log)
-              log->Printf("Target::SetArchitecture Trying to select executable file architecture %s (%s)", arch_spec.GetArchitectureName(), arch_spec.GetTriple().getTriple().c_str());
-            ModuleSpec module_spec (executable_sp->GetFileSpec(), arch_spec);
-            Error error = ModuleList::GetSharedModule (module_spec, 
-                                                       executable_sp, 
-                                                       &GetExecutableSearchPaths(),
-                                                       NULL, 
-                                                       NULL);
-                                          
-            if (!error.Fail() && executable_sp)
-            {
-                SetExecutableModule (executable_sp, true);
-                return true;
-            }
+            SetExecutableModule (executable_sp, true);
+            return true;
         }
     }
     return false;
@@ -1343,7 +1382,10 @@ Target::ModuleUpdated (const ModuleList& module_list, const ModuleSP &old_module
 {
     // A module is replacing an already added module
     if (m_valid)
+    {
         m_breakpoint_list.UpdateBreakpointsWhenModuleIsReplaced(old_module_sp, new_module_sp);
+        m_internal_breakpoint_list.UpdateBreakpointsWhenModuleIsReplaced(old_module_sp, new_module_sp);
+    }
 }
 
 void
@@ -1352,6 +1394,7 @@ Target::ModulesDidLoad (ModuleList &module_list)
     if (m_valid && module_list.GetSize())
     {
         m_breakpoint_list.UpdateBreakpoints (module_list, true, false);
+        m_internal_breakpoint_list.UpdateBreakpoints (module_list, true, false);
         if (m_process_sp)
         {
             m_process_sp->ModulesDidLoad (module_list);
@@ -1376,6 +1419,7 @@ Target::SymbolsDidLoad (ModuleList &module_list)
         }
         
         m_breakpoint_list.UpdateBreakpoints (module_list, true, false);
+        m_internal_breakpoint_list.UpdateBreakpoints (module_list, true, false);
         BroadcastEvent (eBroadcastBitSymbolsLoaded, new TargetEventData (this->shared_from_this(), module_list));
     }
 }
@@ -1387,6 +1431,7 @@ Target::ModulesDidUnload (ModuleList &module_list, bool delete_locations)
     {
         UnloadModuleSections (module_list);
         m_breakpoint_list.UpdateBreakpoints (module_list, false, delete_locations);
+        m_internal_breakpoint_list.UpdateBreakpoints (module_list, false, delete_locations);
         BroadcastEvent (eBroadcastBitModulesUnloaded, new TargetEventData (this->shared_from_this(), module_list));
     }
 }
@@ -1994,6 +2039,7 @@ Target::GetUserExpressionForLanguage(const char *expr,
                                      const char *expr_prefix,
                                      lldb::LanguageType language,
                                      Expression::ResultType desired_type,
+                                     const EvaluateExpressionOptions &options,
                                      Error &error)
 {
     Error type_system_error;
@@ -2007,7 +2053,7 @@ Target::GetUserExpressionForLanguage(const char *expr,
         return nullptr;
     }
     
-    user_expr = type_system->GetUserExpression(expr, expr_prefix, language, desired_type);
+    user_expr = type_system->GetUserExpression(expr, expr_prefix, language, desired_type, options);
     if (!user_expr)
         error.SetErrorStringWithFormat("Could not create an expression for language %s", Language::GetNameForLanguageType(language));
     
@@ -2073,21 +2119,18 @@ Target::GetScratchClangASTContext(bool create_on_demand)
     return nullptr;
 }
 
-ClangASTImporter *
+ClangASTImporterSP
 Target::GetClangASTImporter()
 {
     if (m_valid)
     {
-        ClangASTImporter *ast_importer = m_ast_importer_ap.get();
-        
-        if (!ast_importer)
+        if (!m_ast_importer_sp)
         {
-            ast_importer = new ClangASTImporter();
-            m_ast_importer_ap.reset(ast_importer);
+            m_ast_importer_sp.reset(new ClangASTImporter());
         }
-        return ast_importer;
+        return m_ast_importer_sp;
     }
-    return nullptr;
+    return ClangASTImporterSP();
 }
 
 void
@@ -2166,7 +2209,7 @@ Target::GetTargetFromContexts (const ExecutionContext *exe_ctx_ptr, const Symbol
 
 ExpressionResults
 Target::EvaluateExpression(const char *expr_cstr,
-                           StackFrame *frame,
+                           ExecutionContextScope *exe_scope,
                            lldb::ValueObjectSP &result_valobj_sp,
                            const EvaluateExpressionOptions& options)
 {
@@ -2184,9 +2227,9 @@ Target::EvaluateExpression(const char *expr_cstr,
 
     ExecutionContext exe_ctx;
     
-    if (frame)
+    if (exe_scope)
     {
-        frame->CalculateExecutionContext(exe_ctx);
+        exe_scope->CalculateExecutionContext(exe_ctx);
     }
     else if (m_process_sp)
     {

@@ -147,22 +147,25 @@ SBTypeSummary::CreateWithScriptCode (const char* data, uint32_t options)
 }
 
 SBTypeSummary
-SBTypeSummary::CreateWithCallback (FormatCallback cb, uint32_t options)
+SBTypeSummary::CreateWithCallback (FormatCallback cb, uint32_t options, const char* description)
 {
-    return SBTypeSummary(
-               TypeSummaryImplSP(
-                   cb ? new CXXFunctionSummaryFormat(options,
-                       [cb] (ValueObject& valobj, Stream& stm, const TypeSummaryOptions& opt) -> bool {
-                            SBStream stream;
-                            if (!cb(SBValue(valobj.GetSP()), SBTypeSummaryOptions(&opt), stream))
-                                return false;
-                            stm.Write(stream.GetData(), stream.GetSize());
-                            return true;
-                       },
-                       "SBTypeSummary formatter callback"
-                   ) : nullptr
-                )
-            );
+    SBTypeSummary retval;
+    if (cb)
+    {
+        retval.SetSP(TypeSummaryImplSP(new CXXFunctionSummaryFormat(options,
+                                                                    [cb] (ValueObject& valobj, Stream& stm, const TypeSummaryOptions& opt) -> bool {
+                                                                        SBStream stream;
+                                                                        SBValue sb_value(valobj.GetSP());
+                                                                        SBTypeSummaryOptions options(&opt);
+                                                                        if (!cb(sb_value, options, stream))
+                                                                            return false;
+                                                                        stm.Write(stream.GetData(), stream.GetSize());
+                                                                        return true;
+                                                                    },
+                                                                    description ? description : "callback summary formatter")));
+    }
+    
+    return retval;
 }
 
 SBTypeSummary::SBTypeSummary (const lldb::SBTypeSummary &rhs) :
@@ -325,8 +328,21 @@ SBTypeSummary::operator == (lldb::SBTypeSummary &rhs)
 bool
 SBTypeSummary::IsEqualTo (lldb::SBTypeSummary &rhs)
 {
-    if (IsValid() == false)
-        return !rhs.IsValid();
+    if (IsValid())
+    {
+        // valid and invalid are different
+        if (!rhs.IsValid())
+            return false;
+    }
+    else
+    {
+        // invalid and valid are different
+        if (rhs.IsValid())
+            return false;
+        else
+        // both invalid are the same
+            return true;
+    }
 
     if (m_opaque_sp->GetKind() != rhs.m_opaque_sp->GetKind())
         return false;
@@ -345,6 +361,8 @@ SBTypeSummary::IsEqualTo (lldb::SBTypeSummary &rhs)
             if (IsSummaryString() != rhs.IsSummaryString())
                 return false;
             return GetOptions() == rhs.GetOptions();
+        case TypeSummaryImpl::Kind::eInternal:
+            return (m_opaque_sp.get() == rhs.m_opaque_sp.get());
     }
     
     return false;

@@ -7,6 +7,8 @@ import re
 import unittest
 import warnings
 
+import six
+
 from unittest2 import result
 from unittest2.util import (
     safe_repr, safe_str, strclass,
@@ -137,7 +139,7 @@ class _AssertRaisesContext(object):
             return True
 
         expected_regexp = self.expected_regexp
-        if isinstance(expected_regexp, basestring):
+        if isinstance(expected_regexp, six.string_types):
             expected_regexp = re.compile(expected_regexp)
         if not expected_regexp.search(str(exc_value)):
             raise self.failureException('"%s" does not match "%s"' %
@@ -156,7 +158,7 @@ class _TypeEqualityDict(object):
     
     def __getitem__(self, key):
         value = self._store[key]
-        if isinstance(value, basestring):
+        if isinstance(value, six.string_types):
             return getattr(self.testcase, value)
         return value
     
@@ -234,7 +236,10 @@ class TestCase(unittest.TestCase):
         self.addTypeEqualityFunc(tuple, 'assertTupleEqual')
         self.addTypeEqualityFunc(set, 'assertSetEqual')
         self.addTypeEqualityFunc(frozenset, 'assertSetEqual')
-        self.addTypeEqualityFunc(unicode, 'assertMultiLineEqual')
+        if six.PY2:
+            self.addTypeEqualityFunc(unicode, 'assertMultiLineEqual')
+        else:
+            self.addTypeEqualityFunc(str, 'assertMultiLineEqual')
 
     def addTypeEqualityFunc(self, typeobj, function):
         """Add a type specific assertEqual style function to compare a type.
@@ -348,7 +353,7 @@ class TestCase(unittest.TestCase):
             success = False
             try:
                 self.setUp()
-            except SkipTest, e:
+            except SkipTest as e:
                 self._addSkip(result, str(e))
             except Exception:
                 result.addError(self, sys.exc_info())
@@ -386,7 +391,7 @@ class TestCase(unittest.TestCase):
             testMethod()
         except self.failureException:
             result.addFailure(self, sys.exc_info())
-        except _ExpectedFailure, e:
+        except _ExpectedFailure as e:
             addExpectedFailure = getattr(result, 'addExpectedFailure', None)
             if addExpectedFailure is not None:
                 addExpectedFailure(self, e.exc_info, e.bugnumber)
@@ -394,7 +399,7 @@ class TestCase(unittest.TestCase):
                 warnings.warn("Use of a TestResult without an addExpectedFailure method is deprecated",
                               DeprecationWarning)
                 result.addSuccess(self)
-        except _UnexpectedSuccess, x:
+        except _UnexpectedSuccess as x:
             addUnexpectedSuccess = getattr(result, 'addUnexpectedSuccess', None)
             if addUnexpectedSuccess is not None:
                 addUnexpectedSuccess(self, x.bugnumber)
@@ -402,7 +407,7 @@ class TestCase(unittest.TestCase):
                 warnings.warn("Use of a TestResult without an addUnexpectedSuccess method is deprecated",
                               DeprecationWarning)
                 result.addFailure(self, sys.exc_info())
-        except SkipTest, e:
+        except SkipTest as e:
             self._addSkip(result, str(e))
         except Exception:
             result.addError(self, sys.exc_info())
@@ -510,7 +515,7 @@ class TestCase(unittest.TestCase):
             excName = excClass.__name__
         else:
             excName = str(excClass)
-        raise self.failureException, "%s not raised" % excName
+        raise self.failureException("%s not raised" % excName)
 
     def _getAssertEqualityFunc(self, first, second):
         """Get a detailed comparison function for the types of the two args.
@@ -807,16 +812,16 @@ class TestCase(unittest.TestCase):
         """
         try:
             difference1 = set1.difference(set2)
-        except TypeError, e:
+        except TypeError as e:
             self.fail('invalid type when attempting set difference: %s' % e)
-        except AttributeError, e:
+        except AttributeError as e:
             self.fail('first argument does not support set difference: %s' % e)
 
         try:
             difference2 = set2.difference(set1)
-        except TypeError, e:
+        except TypeError as e:
             self.fail('invalid type when attempting set difference: %s' % e)
-        except AttributeError, e:
+        except AttributeError as e:
             self.fail('second argument does not support set difference: %s' % e)
 
         if not (difference1 or difference2):
@@ -940,9 +945,9 @@ class TestCase(unittest.TestCase):
 
     def assertMultiLineEqual(self, first, second, msg=None):
         """Assert that two multi-line strings are equal."""
-        self.assert_(isinstance(first, basestring), (
+        self.assert_(isinstance(first, six.string_types), (
                 'First argument is not a string'))
-        self.assert_(isinstance(second, basestring), (
+        self.assert_(isinstance(second, six.string_types), (
                 'Second argument is not a string'))
 
         if first != second:
@@ -1017,8 +1022,8 @@ class TestCase(unittest.TestCase):
             return _AssertRaisesContext(expected_exception, self, expected_regexp)
         try:
             callable_obj(*args, **kwargs)
-        except expected_exception, exc_value:
-            if isinstance(expected_regexp, basestring):
+        except expected_exception as exc_value:
+            if isinstance(expected_regexp, six.string_types):
                 expected_regexp = re.compile(expected_regexp)
             if not expected_regexp.search(str(exc_value)):
                 raise self.failureException('"%s" does not match "%s"' %
@@ -1028,12 +1033,12 @@ class TestCase(unittest.TestCase):
                 excName = expected_exception.__name__
             else: 
                 excName = str(expected_exception)
-            raise self.failureException, "%s not raised" % excName
+            raise self.failureException("%s not raised" % excName)
 
 
     def assertRegexpMatches(self, text, expected_regexp, msg=None):
         """Fail the test unless the text matches the regular expression."""
-        if isinstance(expected_regexp, basestring):
+        if isinstance(expected_regexp, six.string_types):
             expected_regexp = re.compile(expected_regexp)
         if not expected_regexp.search(text):
             msg = msg or "Regexp didn't match"
@@ -1042,7 +1047,7 @@ class TestCase(unittest.TestCase):
 
     def assertNotRegexpMatches(self, text, unexpected_regexp, msg=None):
         """Fail the test if the text matches the regular expression."""
-        if isinstance(unexpected_regexp, basestring):
+        if isinstance(unexpected_regexp, six.string_types):
             unexpected_regexp = re.compile(unexpected_regexp)
         match = unexpected_regexp.search(text)
         if match:

@@ -3,6 +3,7 @@
 import sys
 import os
 import types
+import six
 
 from unittest2 import loader, runner
 try:
@@ -76,7 +77,7 @@ class TestProgram(object):
                  argv=None, testRunner=None,
                  testLoader=loader.defaultTestLoader, exit=True,
                  verbosity=1, failfast=None, catchbreak=None, buffer=None):
-        if isinstance(module, basestring):
+        if isinstance(module, six.string_types):
             self.module = __import__(module)
             for part in module.split('.')[1:]:
                 self.module = getattr(self.module, part)
@@ -99,7 +100,7 @@ class TestProgram(object):
 
     def usageExit(self, msg=None):
         if msg:
-            print msg
+            print(msg)
         usage = {'progName': self.progName, 'catchbreak': '', 'failfast': '',
                  'buffer': ''}
         if self.failfast != False:
@@ -108,7 +109,7 @@ class TestProgram(object):
             usage['catchbreak'] = CATCHBREAK
         if self.buffer != False:
             usage['buffer'] = BUFFEROUTPUT
-        print self.USAGE % usage
+        print(self.USAGE % usage)
         sys.exit(2)
 
     def parseArgs(self, argv):
@@ -150,7 +151,7 @@ class TestProgram(object):
             else:
                 self.testNames = (self.defaultTest,)
             self.createTests()
-        except getopt.error, msg:
+        except getopt.error as msg:
             self.usageExit(msg)
 
     def createTests(self):

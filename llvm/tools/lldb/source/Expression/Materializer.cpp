@@ -7,6 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// C Includes
+// C++ Includes
+// Other libraries and framework includes
+// Project includes
 #include "lldb/Core/Log.h"
 #include "lldb/Core/RegisterValue.h"
 #include "lldb/Core/ValueObjectConstResult.h"
@@ -83,11 +87,13 @@ public:
         // Allocate a spare memory area to store the persistent variable's contents.
         
         Error allocate_error;
+        const bool zero_memory = false;
         
         lldb::addr_t mem = map.Malloc(m_persistent_variable_sp->GetByteSize(),
                                       8,
                                       lldb::ePermissionsReadable | lldb::ePermissionsWritable,
                                       IRMemoryMap::eAllocationPolicyMirror,
+                                      zero_memory,
                                       allocate_error);
         
         if (!allocate_error.Success())
@@ -106,7 +112,7 @@ public:
                                                                               m_persistent_variable_sp->GetName(),
                                                                               mem,
                                                                               eAddressTypeLoad,
-                                                                              m_persistent_variable_sp->GetByteSize());
+                                                                              map.GetAddressByteSize());
         
         // Clear the flag if the variable will never be deallocated.
         
@@ -148,7 +154,10 @@ public:
         }
     }
     
-    void Materialize (lldb::StackFrameSP &frame_sp, IRMemoryMap &map, lldb::addr_t process_address, Error &err)
+    void Materialize(lldb::StackFrameSP &frame_sp,
+                     IRMemoryMap &map,
+                     lldb::addr_t process_address,
+                     Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
@@ -193,12 +202,12 @@ public:
         }
     }
     
-    void Dematerialize (lldb::StackFrameSP &frame_sp,
-                        IRMemoryMap &map,
-                        lldb::addr_t process_address,
-                        lldb::addr_t frame_top,
-                        lldb::addr_t frame_bottom,
-                        Error &err)
+    void Dematerialize(lldb::StackFrameSP &frame_sp,
+                       IRMemoryMap &map,
+                       lldb::addr_t process_address,
+                       lldb::addr_t frame_top,
+                       lldb::addr_t frame_bottom,
+                       Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
         
@@ -326,7 +335,7 @@ public:
         }
     }
     
-    void DumpToLog (IRMemoryMap &map, lldb::addr_t process_address, Log *log)
+    void DumpToLog(IRMemoryMap &map, lldb::addr_t process_address, Log *log) override
     {
         StreamString dump_stream;
         
@@ -392,9 +401,10 @@ public:
         log->PutCString(dump_stream.GetData());
     }
     
-    void Wipe (IRMemoryMap &map, lldb::addr_t process_address)
+    void Wipe(IRMemoryMap &map, lldb::addr_t process_address) override
     {
     }
+
 private:
     lldb::ExpressionVariableSP m_persistent_variable_sp;
     Materializer::PersistentVariableDelegate *m_delegate;
@@ -428,7 +438,10 @@ public:
         m_is_reference = m_variable_sp->GetType()->GetForwardCompilerType ().IsReferenceType();
     }
     
-    void Materialize (lldb::StackFrameSP &frame_sp, IRMemoryMap &map, lldb::addr_t process_address, Error &err)
+    void Materialize(lldb::StackFrameSP &frame_sp,
+                     IRMemoryMap &map,
+                     lldb::addr_t process_address,
+                     Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
         
@@ -541,8 +554,15 @@ public:
                     byte_align = 1;
                 
                 Error alloc_error;
+                const bool zero_memory = false;
+
+                m_temporary_allocation = map.Malloc(data.GetByteSize(),
+                                                    byte_align,
+                                                    lldb::ePermissionsReadable | lldb::ePermissionsWritable,
+                                                    IRMemoryMap::eAllocationPolicyMirror,
+                                                    zero_memory,
+                                                    alloc_error);
                 
-                m_temporary_allocation = map.Malloc(data.GetByteSize(), byte_align, lldb::ePermissionsReadable | lldb::ePermissionsWritable, IRMemoryMap::eAllocationPolicyMirror, alloc_error);
                 m_temporary_allocation_size = data.GetByteSize();
                 
                 m_original_data.reset(new DataBufferHeap(data.GetDataStart(), data.GetByteSize()));
@@ -575,12 +595,12 @@ public:
         }
     }
     
-    void Dematerialize (lldb::StackFrameSP &frame_sp,
-                        IRMemoryMap &map,
-                        lldb::addr_t process_address,
-                        lldb::addr_t frame_top,
-                        lldb::addr_t frame_bottom,
-                        Error &err)
+    void Dematerialize(lldb::StackFrameSP &frame_sp,
+                       IRMemoryMap &map,
+                       lldb::addr_t process_address,
+                       lldb::addr_t frame_top,
+                       lldb::addr_t frame_bottom,
+                       Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
@@ -659,7 +679,7 @@ public:
         }
     }
     
-    void DumpToLog (IRMemoryMap &map, lldb::addr_t process_address, Log *log)
+    void DumpToLog(IRMemoryMap &map, lldb::addr_t process_address, Log *log) override
     {
         StreamString dump_stream;
 
@@ -731,7 +751,7 @@ public:
         log->PutCString(dump_stream.GetData());
     }
     
-    void Wipe (IRMemoryMap &map, lldb::addr_t process_address)
+    void Wipe(IRMemoryMap &map, lldb::addr_t process_address) override
     {
         if (m_temporary_allocation != LLDB_INVALID_ADDRESS)
         {
@@ -744,6 +764,7 @@ public:
         }
 
     }
+
 private:
     lldb::VariableSP    m_variable_sp;
     bool                m_is_reference;
@@ -782,7 +803,10 @@ public:
         m_alignment = 8;
     }
     
-    void Materialize (lldb::StackFrameSP &frame_sp, IRMemoryMap &map, lldb::addr_t process_address, Error &err)
+    void Materialize(lldb::StackFrameSP &frame_sp,
+                     IRMemoryMap &map,
+                     lldb::addr_t process_address,
+                     Error &err) override
     {
         if (!m_is_program_reference)
         {
@@ -802,8 +826,14 @@ public:
                 byte_align = 1;
             
             Error alloc_error;
-            
-            m_temporary_allocation = map.Malloc(byte_size, byte_align, lldb::ePermissionsReadable | lldb::ePermissionsWritable, IRMemoryMap::eAllocationPolicyMirror, alloc_error);
+            const bool zero_memory = true;
+
+            m_temporary_allocation = map.Malloc(byte_size,
+                                                byte_align,
+                                                lldb::ePermissionsReadable | lldb::ePermissionsWritable,
+                                                IRMemoryMap::eAllocationPolicyMirror,
+                                                zero_memory,
+                                                alloc_error);
             m_temporary_allocation_size = byte_size;
             
             if (!alloc_error.Success())
@@ -823,12 +853,12 @@ public:
         }
     }
     
-    void Dematerialize (lldb::StackFrameSP &frame_sp,
-                        IRMemoryMap &map,
-                        lldb::addr_t process_address,
-                        lldb::addr_t frame_top,
-                        lldb::addr_t frame_bottom,
-                        Error &err)
+    void Dematerialize(lldb::StackFrameSP &frame_sp,
+                       IRMemoryMap &map,
+                       lldb::addr_t process_address,
+                       lldb::addr_t frame_top,
+                       lldb::addr_t frame_bottom,
+                       Error &err) override
     {
         err.Clear();
         
@@ -942,7 +972,7 @@ public:
         m_temporary_allocation_size = 0;
     }
     
-    void DumpToLog (IRMemoryMap &map, lldb::addr_t process_address, Log *log)
+    void DumpToLog(IRMemoryMap &map, lldb::addr_t process_address, Log *log) override
     {
         StreamString dump_stream;
         
@@ -1015,7 +1045,7 @@ public:
         log->PutCString(dump_stream.GetData());
     }
     
-    void Wipe (IRMemoryMap &map, lldb::addr_t process_address)
+    void Wipe(IRMemoryMap &map, lldb::addr_t process_address) override
     {
         if (!m_keep_in_memory && m_temporary_allocation != LLDB_INVALID_ADDRESS)
         {
@@ -1027,6 +1057,7 @@ public:
         m_temporary_allocation = LLDB_INVALID_ADDRESS;
         m_temporary_allocation_size = 0;
     }
+
 private:
     CompilerType    m_type;
     bool            m_is_program_reference;
@@ -1063,7 +1094,10 @@ public:
         m_alignment = 8;
     }
     
-    void Materialize (lldb::StackFrameSP &frame_sp, IRMemoryMap &map, lldb::addr_t process_address, Error &err)
+    void Materialize(lldb::StackFrameSP &frame_sp,
+                     IRMemoryMap &map,
+                     lldb::addr_t process_address,
+                     Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
@@ -1107,12 +1141,12 @@ public:
         }
     }
     
-    void Dematerialize (lldb::StackFrameSP &frame_sp,
-                        IRMemoryMap &map,
-                        lldb::addr_t process_address,
-                        lldb::addr_t frame_top,
-                        lldb::addr_t frame_bottom,
-                        Error &err)
+    void Dematerialize(lldb::StackFrameSP &frame_sp,
+                       IRMemoryMap &map,
+                       lldb::addr_t process_address,
+                       lldb::addr_t frame_top,
+                       lldb::addr_t frame_bottom,
+                       Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
@@ -1128,7 +1162,7 @@ public:
         // no work needs to be done
     }
     
-    void DumpToLog (IRMemoryMap &map, lldb::addr_t process_address, Log *log)
+    void DumpToLog(IRMemoryMap &map, lldb::addr_t process_address, Log *log) override
     {
         StreamString dump_stream;
         
@@ -1162,9 +1196,10 @@ public:
         log->PutCString(dump_stream.GetData());
     }
     
-    void Wipe (IRMemoryMap &map, lldb::addr_t process_address)
+    void Wipe(IRMemoryMap &map, lldb::addr_t process_address) override
     {
     }
+
 private:
     Symbol m_symbol;
 };
@@ -1191,7 +1226,10 @@ public:
         m_alignment = m_register_info.byte_size;
     }
     
-    void Materialize (lldb::StackFrameSP &frame_sp, IRMemoryMap &map, lldb::addr_t process_address, Error &err)
+    void Materialize(lldb::StackFrameSP &frame_sp,
+                     IRMemoryMap &map,
+                     lldb::addr_t process_address,
+                     Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
         
@@ -1247,12 +1285,12 @@ public:
         }
     }
     
-    void Dematerialize (lldb::StackFrameSP &frame_sp,
-                        IRMemoryMap &map,
-                        lldb::addr_t process_address,
-                        lldb::addr_t frame_top,
-                        lldb::addr_t frame_bottom,
-                        Error &err)
+    void Dematerialize(lldb::StackFrameSP &frame_sp,
+                       IRMemoryMap &map,
+                       lldb::addr_t process_address,
+                       lldb::addr_t frame_top,
+                       lldb::addr_t frame_bottom,
+                       Error &err) override
     {
         Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
         
@@ -1304,7 +1342,7 @@ public:
         }
     }
     
-    void DumpToLog (IRMemoryMap &map, lldb::addr_t process_address, Log *log)
+    void DumpToLog(IRMemoryMap &map, lldb::addr_t process_address, Log *log) override
     {
         StreamString dump_stream;
         
@@ -1339,9 +1377,10 @@ public:
         log->PutCString(dump_stream.GetData());
     }
     
-    void Wipe (IRMemoryMap &map, lldb::addr_t process_address)
+    void Wipe(IRMemoryMap &map, lldb::addr_t process_address) override
     {
     }
+
 private:
     RegisterInfo m_register_info;
     lldb::DataBufferSP m_register_contents;
@@ -1474,12 +1513,9 @@ Materializer::Dematerializer::Wipe ()
         entity_up->Wipe (*m_map, m_process_address);
     }
 
-    m_materializer = NULL;
-    m_map = NULL;
+    m_materializer = nullptr;
+    m_map = nullptr;
     m_process_address = LLDB_INVALID_ADDRESS;
 }
 
-Materializer::PersistentVariableDelegate::~PersistentVariableDelegate()
-{
-}
-
+Materializer::PersistentVariableDelegate::~PersistentVariableDelegate() = default;

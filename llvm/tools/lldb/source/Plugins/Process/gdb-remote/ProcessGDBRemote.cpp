@@ -989,12 +989,7 @@ ProcessGDBRemote::DoLaunch (Module *exe_module, ProcessLaunchInfo &launch_info)
     ObjectFile * object_file = exe_module->GetObjectFile();
     if (object_file)
     {
-        // Make sure we aren't already connected?
-        if (!m_gdb_comm.IsConnected())
-        {
-            error = LaunchAndConnectToDebugserver (launch_info);
-        }
-        
+        error = EstablishConnectionIfNeeded (launch_info);
         if (error.Success())
         {
             lldb_utility::PseudoTerminal pty;
@@ -1374,21 +1369,7 @@ ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid, const Process
     Clear();
     if (attach_pid != LLDB_INVALID_PROCESS_ID)
     {
-        // Make sure we aren't already connected?
-        if (!m_gdb_comm.IsConnected())
-        {
-            error = LaunchAndConnectToDebugserver (attach_info);
-            
-            if (error.Fail())
-            {
-                const char *error_string = error.AsCString();
-                if (error_string == NULL)
-                    error_string = "unable to launch " DEBUGSERVER_BASENAME;
-
-                SetExitStatus (-1, error_string);
-            }
-        }
-    
+        error = EstablishConnectionIfNeeded (attach_info);
         if (error.Success())
         {
             m_gdb_comm.SetDetachOnError(attach_info.GetDetachOnError());
@@ -1398,6 +1379,8 @@ ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid, const Process
             SetID (attach_pid);            
             m_async_broadcaster.BroadcastEvent (eBroadcastBitAsyncContinue, new EventDataBytes (packet, packet_len));
         }
+        else
+            SetExitStatus (-1, error.AsCString());
     }
 
     return error;
@@ -1412,21 +1395,7 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, const Pro
 
     if (process_name && process_name[0])
     {
-        // Make sure we aren't already connected?
-        if (!m_gdb_comm.IsConnected())
-        {
-            error = LaunchAndConnectToDebugserver (attach_info);
-
-            if (error.Fail())
-            {
-                const char *error_string = error.AsCString();
-                if (error_string == NULL)
-                    error_string = "unable to launch " DEBUGSERVER_BASENAME;
-
-                SetExitStatus (-1, error_string);
-            }
-        }
-
+        error = EstablishConnectionIfNeeded (attach_info);
         if (error.Success())
         {
             StreamString packet;
@@ -1450,11 +1419,13 @@ ProcessGDBRemote::DoAttachToProcessWithName (const char *process_name, const Pro
             else
                 packet.PutCString("vAttachName");
             packet.PutChar(';');
-            packet.PutBytesAsRawHex8(process_name, strlen(process_name), lldb::endian::InlHostByteOrder(), lldb::endian::InlHostByteOrder());
+            packet.PutBytesAsRawHex8(process_name, strlen(process_name), endian::InlHostByteOrder(), endian::InlHostByteOrder());
             
             m_async_broadcaster.BroadcastEvent (eBroadcastBitAsyncContinue, new EventDataBytes (packet.GetData(), packet.GetSize()));
 
         }
+        else
+            SetExitStatus (-1, error.AsCString());
     }
     return error;
 }
@@ -1832,25 +1803,29 @@ ProcessGDBRemote::UpdateThreadIDList ()
         // that might contain a "threads" key/value pair
 
         // Lock the thread stack while we access it
-        Mutex::Locker stop_stack_lock(m_last_stop_packet_mutex);
-        // Get the number of stop packets on the stack
-        int nItems = m_stop_packet_stack.size();
-        // Iterate over them
-        for (int i = 0; i < nItems; i++)
+        //Mutex::Locker stop_stack_lock(m_last_stop_packet_mutex);
+        Mutex::Locker stop_stack_lock;
+        if (stop_stack_lock.TryLock(m_last_stop_packet_mutex))
         {
-            // Get the thread stop info
-            StringExtractorGDBRemote &stop_info = m_stop_packet_stack[i];
-            const std::string &stop_info_str = stop_info.GetStringRef();
-            const size_t threads_pos = stop_info_str.find(";threads:");
-            if (threads_pos != std::string::npos)
+            // Get the number of stop packets on the stack
+            int nItems = m_stop_packet_stack.size();
+            // Iterate over them
+            for (int i = 0; i < nItems; i++)
             {
-                const size_t start = threads_pos + strlen(";threads:");
-                const size_t end = stop_info_str.find(';', start);
-                if (end != std::string::npos)
+                // Get the thread stop info
+                StringExtractorGDBRemote &stop_info = m_stop_packet_stack[i];
+                const std::string &stop_info_str = stop_info.GetStringRef();
+                const size_t threads_pos = stop_info_str.find(";threads:");
+                if (threads_pos != std::string::npos)
                 {
-                    std::string value = stop_info_str.substr(start, end - start);
-                    if (UpdateThreadIDsFromStopReplyThreadsValue(value))
-                        return true;
+                    const size_t start = threads_pos + strlen(";threads:");
+                    const size_t end = stop_info_str.find(';', start);
+                    if (end != std::string::npos)
+                    {
+                        std::string value = stop_info_str.substr(start, end - start);
+                        if (UpdateThreadIDsFromStopReplyThreadsValue(value))
+                            return true;
+                    }
                 }
             }
         }
@@ -2977,7 +2952,7 @@ ProcessGDBRemote::SetUnixSignals(const UnixSignalsSP &signals_sp)
 bool
 ProcessGDBRemote::IsAlive ()
 {
-    return m_gdb_comm.IsConnected() && m_private_state.GetValue() != eStateExited;
+    return m_gdb_comm.IsConnected() && Process::IsAlive();
 }
 
 addr_t
@@ -3101,7 +3076,7 @@ ProcessGDBRemote::DoWriteMemory (addr_t addr, const void *buf, size_t size, Erro
 
     StreamString packet;
     packet.Printf("M%" PRIx64 ",%" PRIx64 ":", addr, (uint64_t)size);
-    packet.PutBytesAsRawHex8(buf, size, lldb::endian::InlHostByteOrder(), lldb::endian::InlHostByteOrder());
+    packet.PutBytesAsRawHex8(buf, size, endian::InlHostByteOrder(), endian::InlHostByteOrder());
     StringExtractorGDBRemote response;
     if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetData(), packet.GetSize(), response, true) == GDBRemoteCommunication::PacketResult::Success)
     {
@@ -3534,6 +3509,27 @@ ProcessGDBRemote::DoSignal (int signo)
 
     if (!m_gdb_comm.SendAsyncSignal (signo))
         error.SetErrorStringWithFormat("failed to send signal %i", signo);
+    return error;
+}
+
+Error
+ProcessGDBRemote::EstablishConnectionIfNeeded (const ProcessInfo &process_info)
+{
+    // Make sure we aren't already connected?
+    if (m_gdb_comm.IsConnected())
+        return Error();
+
+    PlatformSP platform_sp (GetTarget ().GetPlatform ());
+    if (platform_sp && !platform_sp->IsHost ())
+        return Error("Lost debug server connection");
+
+    auto error = LaunchAndConnectToDebugserver (process_info);
+    if (error.Fail())
+    {
+        const char *error_string = error.AsCString();
+        if (error_string == nullptr)
+            error_string = "unable to launch " DEBUGSERVER_BASENAME;
+    }
     return error;
 }
 
@@ -4165,6 +4161,9 @@ ProcessGDBRemote::GetLoadedDynamicLibrariesInfos (lldb::addr_t image_list_addres
 
     if (m_gdb_comm.GetLoadedDynamicLibrariesInfosSupported())
     {
+        // Scope for the scoped timeout object
+        GDBRemoteCommunication::ScopedTimeout timeout (m_gdb_comm, 10);
+
         StructuredData::ObjectSP args_dict(new StructuredData::Dictionary());
         args_dict->GetAsDictionary()->AddIntegerItem ("image_list_address", image_list_address);
         args_dict->GetAsDictionary()->AddIntegerItem ("image_count", image_count);
@@ -4188,8 +4187,6 @@ ProcessGDBRemote::GetLoadedDynamicLibrariesInfos (lldb::addr_t image_list_addres
             {
                 if (!response.Empty())
                 {
-                    // The packet has already had the 0x7d xor quoting stripped out at the
-                    // GDBRemoteCommunication packet receive level.
                     object_sp = StructuredData::ParseJSON (response.GetStringRef());
                 }
             }
@@ -4197,7 +4194,6 @@ ProcessGDBRemote::GetLoadedDynamicLibrariesInfos (lldb::addr_t image_list_addres
     }
     return object_sp;
 }
-
 
 // Establish the largest memory read/write payloads we should use.
 // If the remote stub has a max packet size, stay under that size.
@@ -4290,6 +4286,18 @@ ProcessGDBRemote::GetModuleSpec(const FileSpec& module_file_spec,
     }
 
     return true;
+}
+
+bool
+ProcessGDBRemote::GetHostOSVersion(uint32_t &major,
+                                   uint32_t &minor,
+                                   uint32_t &update)
+{
+    if (m_gdb_comm.GetOSVersion(major, minor, update))
+        return true;
+    // We failed to get the host OS version, defer to the base
+    // implementation to correctly invalidate the arguments.
+    return Process::GetHostOSVersion(major, minor, update);
 }
 
 namespace {

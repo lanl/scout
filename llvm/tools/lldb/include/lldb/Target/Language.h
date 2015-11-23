@@ -32,7 +32,6 @@ class Language :
 public PluginInterface
 {
 public:
-    
     class TypeScavenger
     {
     public:
@@ -66,6 +65,13 @@ public:
         Find_Impl (ExecutionContextScope *exe_scope,
                    const char *key,
                    ResultSet &results) = 0;
+    };
+    
+    enum class FunctionNameRepresentation
+    {
+        eName,
+        eNameWithArgs,
+        eNameWithNoArgs
     };
 
     ~Language() override;
@@ -118,6 +124,27 @@ public:
     // it should return an appropriate closure here
     virtual DumpValueObjectOptions::DeclPrintingHelper
     GetDeclPrintingHelper ();
+    
+    virtual LazyBool
+    IsLogicalTrue (ValueObject& valobj,
+                   Error& error);
+    
+    // for a ValueObject of some "reference type", if the value points to the
+    // nil/null object, this method returns true
+    virtual bool
+    IsNilReference (ValueObject& valobj);
+    
+    // for a ValueObject of some "reference type", if the language provides a technique
+    // to decide whether the reference has ever been assigned to some object, this method
+    // will return true if such detection is possible, and if the reference has never been assigned
+    virtual bool
+    IsUninitializedReference (ValueObject& valobj);
+    
+    virtual bool
+    GetFunctionDisplayName (const SymbolContext *sc,
+                            const ExecutionContext *exe_ctx,
+                            FunctionNameRepresentation representation,
+                            Stream& s);
     
     // These are accessors for general information about the Languages lldb knows about:
     

@@ -44,6 +44,7 @@
 #include "Plugins/InstrumentationRuntime/AddressSanitizer/AddressSanitizerRuntime.h"
 #include "Plugins/JITLoader/GDB/JITLoaderGDB.h"
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
+#include "Plugins/Language/Go/GoLanguage.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/Language/ObjCPlusPlus/ObjCPlusPlusLanguage.h"
 #include "Plugins/LanguageRuntime/CPlusPlus/ItaniumABI/ItaniumABILanguageRuntime.h"
@@ -68,6 +69,10 @@
 #include "Plugins/Process/mach-core/ProcessMachCore.h"
 #include "Plugins/Process/MacOSX-Kernel/ProcessKDP.h"
 #include "Plugins/SymbolVendor/MacOSX/SymbolVendorMacOSX.h"
+#include "Plugins/Platform/MacOSX/PlatformAppleTVSimulator.h"
+#include "Plugins/Platform/MacOSX/PlatformAppleWatchSimulator.h"
+#include "Plugins/Platform/MacOSX/PlatformRemoteAppleTV.h"
+#include "Plugins/Platform/MacOSX/PlatformRemoteAppleWatch.h"
 #endif
 
 #if defined(__FreeBSD__)
@@ -76,7 +81,7 @@
 
 #if defined(_MSC_VER)
 #include "lldb/Host/windows/windows.h"
-#include "Plugins/Process/Windows/Live/ProcessWindows.h"
+#include "Plugins/Process/Windows/Live/ProcessWindowsLive.h"
 #include "Plugins/Process/Windows/MiniDump/ProcessWinMiniDump.h"
 #endif
 
@@ -303,11 +308,12 @@ SystemInitializerFull::Initialize()
     GoLanguageRuntime::Initialize();
     
     CPlusPlusLanguage::Initialize();
+    GoLanguage::Initialize();
     ObjCLanguage::Initialize();
     ObjCPlusPlusLanguage::Initialize();
 
 #if defined(_MSC_VER)
-    ProcessWindows::Initialize();
+    ProcessWindowsLive::Initialize();
 #endif
 #if defined(__FreeBSD__)
     ProcessFreeBSD::Initialize();
@@ -316,6 +322,10 @@ SystemInitializerFull::Initialize()
     SymbolVendorMacOSX::Initialize();
     ProcessKDP::Initialize();
     ProcessMachCore::Initialize();
+    PlatformAppleTVSimulator::Initialize();
+    PlatformAppleWatchSimulator::Initialize();
+    PlatformRemoteAppleTV::Initialize();
+    PlatformRemoteAppleWatch::Initialize();
 #endif
     //----------------------------------------------------------------------
     // Platform agnostic plugins
@@ -414,6 +424,7 @@ SystemInitializerFull::Terminate()
     RenderScriptRuntime::Terminate();
 
     CPlusPlusLanguage::Terminate();
+    GoLanguage::Terminate();
     ObjCLanguage::Terminate();
     ObjCPlusPlusLanguage::Terminate();
     
@@ -421,6 +432,10 @@ SystemInitializerFull::Terminate()
     ProcessMachCore::Terminate();
     ProcessKDP::Terminate();
     SymbolVendorMacOSX::Terminate();
+    PlatformAppleTVSimulator::Terminate();
+    PlatformAppleWatchSimulator::Terminate();
+    PlatformRemoteAppleTV::Terminate();
+    PlatformRemoteAppleWatch::Terminate();
 #endif
 
 #if defined(__FreeBSD__)

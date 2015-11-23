@@ -1501,6 +1501,29 @@ Process::SetExitStatus (int status, const char *cstr)
     return true;
 }
 
+bool
+Process::IsAlive ()
+{
+    switch (m_private_state.GetValue())
+    {
+        case eStateInvalid:
+        case eStateUnloaded:
+        case eStateDetached:
+        case eStateExited:
+            return false;
+
+        case eStateConnected:
+        case eStateAttaching:
+        case eStateLaunching:
+        case eStateStopped:
+        case eStateRunning:
+        case eStateStepping:
+        case eStateCrashed:
+        case eStateSuspended:
+            return true;
+    }
+}
+
 // This static callback can be used to watch for local child processes on
 // the current host. The child process exits, the process will be
 // found in the global target list (we want to be completely sure that the
@@ -1565,41 +1588,38 @@ Process::UpdateThreadListIfNeeded ()
                 // Don't call into the OperatingSystem to update the thread list if we are shutting down, since
                 // that may call back into the SBAPI's, requiring the API lock which is already held by whoever is
                 // shutting us down, causing a deadlock.
-                if (!m_destroy_in_process)
+                OperatingSystem *os = GetOperatingSystem ();
+                if (os && !m_destroy_in_process)
                 {
-                    OperatingSystem *os = GetOperatingSystem ();
-                    if (os)
-                    {
-                        // Clear any old backing threads where memory threads might have been
-                        // backed by actual threads from the lldb_private::Process subclass
-                        size_t num_old_threads = old_thread_list.GetSize(false);
-                        for (size_t i=0; i<num_old_threads; ++i)
-                            old_thread_list.GetThreadAtIndex(i, false)->ClearBackingThread();
+                    // Clear any old backing threads where memory threads might have been
+                    // backed by actual threads from the lldb_private::Process subclass
+                    size_t num_old_threads = old_thread_list.GetSize(false);
+                    for (size_t i=0; i<num_old_threads; ++i)
+                        old_thread_list.GetThreadAtIndex(i, false)->ClearBackingThread();
 
-                        // Turn off dynamic types to ensure we don't run any expressions. Objective C
-                        // can run an expression to determine if a SBValue is a dynamic type or not
-                        // and we need to avoid this. OperatingSystem plug-ins can't run expressions
-                        // that require running code...
+                    // Turn off dynamic types to ensure we don't run any expressions. Objective C
+                    // can run an expression to determine if a SBValue is a dynamic type or not
+                    // and we need to avoid this. OperatingSystem plug-ins can't run expressions
+                    // that require running code...
 
-                        Target &target = GetTarget();
-                        const lldb::DynamicValueType saved_prefer_dynamic = target.GetPreferDynamicValue ();
-                        if (saved_prefer_dynamic != lldb::eNoDynamicValues)
-                            target.SetPreferDynamicValue(lldb::eNoDynamicValues);
+                    Target &target = GetTarget();
+                    const lldb::DynamicValueType saved_prefer_dynamic = target.GetPreferDynamicValue ();
+                    if (saved_prefer_dynamic != lldb::eNoDynamicValues)
+                        target.SetPreferDynamicValue(lldb::eNoDynamicValues);
 
-                        // Now let the OperatingSystem plug-in update the thread list
+                    // Now let the OperatingSystem plug-in update the thread list
 
-                        os->UpdateThreadList (old_thread_list,  // Old list full of threads created by OS plug-in
-                                              real_thread_list, // The actual thread list full of threads created by each lldb_private::Process subclass
-                                              new_thread_list); // The new thread list that we will show to the user that gets filled in
+                    os->UpdateThreadList (old_thread_list,  // Old list full of threads created by OS plug-in
+                                          real_thread_list, // The actual thread list full of threads created by each lldb_private::Process subclass
+                                          new_thread_list); // The new thread list that we will show to the user that gets filled in
 
-                        if (saved_prefer_dynamic != lldb::eNoDynamicValues)
-                            target.SetPreferDynamicValue(saved_prefer_dynamic);
-                    }
-                    else
-                    {
-                        // No OS plug-in, the new thread list is the same as the real thread list
-                        new_thread_list = real_thread_list;
-                    }
+                    if (saved_prefer_dynamic != lldb::eNoDynamicValues)
+                        target.SetPreferDynamicValue(saved_prefer_dynamic);
+                }
+                else
+                {
+                    // No OS plug-in, the new thread list is the same as the real thread list
+                    new_thread_list = real_thread_list;
                 }
                 
                 m_thread_list_real.Update(real_thread_list);
@@ -1963,7 +1983,7 @@ Process::LoadImage (const FileSpec &image_spec, Error &error)
                                     if (error_str_sp->IsCStringContainer(true))
                                     {
                                         DataBufferSP buffer_sp(new DataBufferHeap(10240,0));
-                                        size_t num_chars = error_str_sp->ReadPointedString (buffer_sp, error, 10240);
+                                        size_t num_chars = error_str_sp->ReadPointedString (buffer_sp, error, 10240).first;
                                         if (error.Success() && num_chars > 0)
                                         {
                                             error.Clear();
@@ -2968,6 +2988,18 @@ Process::AllocateMemory(size_t size, uint32_t permissions, Error &error)
                     m_mod_id.GetMemoryID());
     return allocated_addr;
 #endif
+}
+
+addr_t
+Process::CallocateMemory(size_t size, uint32_t permissions, Error &error)
+{
+    addr_t return_addr = AllocateMemory(size, permissions, error);
+    if (error.Success())
+    {
+        std::string buffer(size, 0);
+        WriteMemory(return_addr, buffer.c_str(), size, error);
+    }
+    return return_addr;
 }
 
 bool
