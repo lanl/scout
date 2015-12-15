@@ -177,17 +177,22 @@ X86RegisterInfo::getPointerRegClass(const MachineFunction &MF,
       return &X86::GR64_NOREX_NOSPRegClass;
     return &X86::GR32_NOREX_NOSPRegClass;
   case 4: // Available for tailcall (not callee-saved GPRs).
-    const Function *F = MF.getFunction();
-    if (IsWin64 || (F && F->getCallingConv() == CallingConv::X86_64_Win64))
-      return &X86::GR64_TCW64RegClass;
-    else if (Is64Bit)
-      return &X86::GR64_TCRegClass;
-
-    bool hasHipeCC = (F ? F->getCallingConv() == CallingConv::HiPE : false);
-    if (hasHipeCC)
-      return &X86::GR32RegClass;
-    return &X86::GR32_TCRegClass;
+    return getGPRsForTailCall(MF);
   }
+}
+
+const TargetRegisterClass *
+X86RegisterInfo::getGPRsForTailCall(const MachineFunction &MF) const {
+  const Function *F = MF.getFunction();
+  if (IsWin64 || (F && F->getCallingConv() == CallingConv::X86_64_Win64))
+    return &X86::GR64_TCW64RegClass;
+  else if (Is64Bit)
+    return &X86::GR64_TCRegClass;
+
+  bool hasHipeCC = (F ? F->getCallingConv() == CallingConv::HiPE : false);
+  if (hasHipeCC)
+    return &X86::GR32RegClass;
+  return &X86::GR32_TCRegClass;
 }
 
 const TargetRegisterClass *
@@ -243,6 +248,10 @@ X86RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
     if (HasAVX)
       return CSR_64_RT_AllRegs_AVX_SaveList;
     return CSR_64_RT_AllRegs_SaveList;
+  case CallingConv::CXX_FAST_TLS:
+    if (Is64Bit)
+      return CSR_64_TLS_Darwin_SaveList;
+    break;
   case CallingConv::Intel_OCL_BI: {
     if (HasAVX512 && IsWin64)
       return CSR_Win64_Intel_OCL_BI_AVX512_SaveList;
@@ -305,6 +314,10 @@ X86RegisterInfo::getCallPreservedMask(const MachineFunction &MF,
     if (HasAVX)
       return CSR_64_RT_AllRegs_AVX_RegMask;
     return CSR_64_RT_AllRegs_RegMask;
+  case CallingConv::CXX_FAST_TLS:
+    if (Is64Bit)
+      return CSR_64_TLS_Darwin_RegMask;
+    break;
   case CallingConv::Intel_OCL_BI: {
     if (HasAVX512 && IsWin64)
       return CSR_Win64_Intel_OCL_BI_AVX512_RegMask;

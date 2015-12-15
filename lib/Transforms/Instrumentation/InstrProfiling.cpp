@@ -265,8 +265,8 @@ void InstrProfiling::lowerCoverageData(GlobalVariable *CoverageData) {
 
 /// Get the name of a profiling variable for a particular function.
 static std::string getVarName(InstrProfIncrementInst *Inc, StringRef Prefix) {
-  auto *Arr = cast<ConstantDataArray>(Inc->getName()->getInitializer());
-  StringRef Name = Arr->isCString() ? Arr->getAsCString() : Arr->getAsString();
+  StringRef NamePrefix = getInstrProfNameVarPrefix();
+  StringRef Name = Inc->getName()->getName().substr(NamePrefix.size());
   return (Prefix + Name).str();
 }
 
@@ -344,7 +344,7 @@ InstrProfiling::getOrCreateRegionCounters(InstrProfIncrementInst *Inc) {
                                   getVarName(Inc, getInstrProfDataVarPrefix()));
   Data->setVisibility(NamePtr->getVisibility());
   Data->setSection(getDataSection());
-  Data->setAlignment(8);
+  Data->setAlignment(INSTR_PROF_DATA_ALIGNMENT);
   Data->setComdat(ProfileVarsComdat);
 
   PD.RegionCounters = CounterPtr;

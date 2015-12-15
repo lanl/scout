@@ -25,6 +25,8 @@ using namespace llvm;
 // Out of line method to get vtable etc for class.
 void ValueMapTypeRemapper::anchor() {}
 void ValueMaterializer::anchor() {}
+void ValueMaterializer::materializeInitFor(GlobalValue *New, GlobalValue *Old) {
+}
 
 Value *llvm::MapValue(const Value *V, ValueToValueMapTy &VM, RemapFlags Flags,
                       ValueMapTypeRemapper *TypeMapper,
@@ -36,8 +38,14 @@ Value *llvm::MapValue(const Value *V, ValueToValueMapTy &VM, RemapFlags Flags,
   
   // If we have a materializer and it can materialize a value, use that.
   if (Materializer) {
-    if (Value *NewV = Materializer->materializeValueFor(const_cast<Value*>(V)))
-      return VM[V] = NewV;
+    if (Value *NewV =
+            Materializer->materializeDeclFor(const_cast<Value *>(V))) {
+      VM[V] = NewV;
+      if (auto *NewGV = dyn_cast<GlobalValue>(NewV))
+        Materializer->materializeInitFor(
+            NewGV, const_cast<GlobalValue *>(cast<GlobalValue>(V)));
+      return NewV;
+    }
   }
 
   // Global values do not need to be seeded into the VM if they

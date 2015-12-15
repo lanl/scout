@@ -97,6 +97,7 @@ void initializeConstantPropagationPass(PassRegistry&);
 void initializeMachineCopyPropagationPass(PassRegistry&);
 void initializeCostModelAnalysisPass(PassRegistry&);
 void initializeCorrelatedValuePropagationPass(PassRegistry&);
+void initializeCrossDSOCFIPass(PassRegistry&);
 void initializeDAEPass(PassRegistry&);
 void initializeDAHPass(PassRegistry&);
 void initializeDCEPass(PassRegistry&);
@@ -117,6 +118,8 @@ void initializeEdgeBundlesPass(PassRegistry&);
 void initializeExpandPostRAPass(PassRegistry&);
 void initializeAAResultsWrapperPassPass(PassRegistry &);
 void initializeGCOVProfilerPass(PassRegistry&);
+void initializePGOInstrumentationGenPass(PassRegistry&);
+void initializePGOInstrumentationUsePass(PassRegistry&);
 void initializeInstrProfilingPass(PassRegistry&);
 void initializeAddressSanitizerPass(PassRegistry&);
 void initializeAddressSanitizerModulePass(PassRegistry&);
@@ -302,6 +305,7 @@ void initializeSjLjEHPreparePass(PassRegistry&);
 void initializeDemandedBitsPass(PassRegistry&);
 void initializeFuncletLayoutPass(PassRegistry &);
 void initializeLoopLoadEliminationPass(PassRegistry&);
+void initializeFunctionImportPassPass(PassRegistry &);
 }
 
 #endif

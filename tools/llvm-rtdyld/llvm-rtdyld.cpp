@@ -132,6 +132,12 @@ DummySymbolMappings("dummy-extern",
                     cl::ZeroOrMore,
                     cl::Hidden);
 
+static cl::opt<bool>
+PrintAllocationRequests("print-alloc-requests",
+                        cl::desc("Print allocation requests made to the memory "
+                                 "manager by RuntimeDyld"),
+                        cl::Hidden);
+
 /* *** */
 
 // A trivial memory manager that doesn't do anything fancy, just uses the
@@ -211,6 +217,10 @@ uint8_t *TrivialMemoryManager::allocateCodeSection(uintptr_t Size,
                                                    unsigned Alignment,
                                                    unsigned SectionID,
                                                    StringRef SectionName) {
+  if (PrintAllocationRequests)
+    outs() << "allocateCodeSection(Size = " << Size << ", Alignment = "
+           << Alignment << ", SectionName = " << SectionName << ")\n";
+
   if (UsePreallocation)
     return allocateFromSlab(Size, Alignment, true /* isCode */);
 
@@ -227,6 +237,10 @@ uint8_t *TrivialMemoryManager::allocateDataSection(uintptr_t Size,
                                                    unsigned SectionID,
                                                    StringRef SectionName,
                                                    bool IsReadOnly) {
+  if (PrintAllocationRequests)
+    outs() << "allocateDataSection(Size = " << Size << ", Alignment = "
+           << Alignment << ", SectionName = " << SectionName << ")\n";
+
   if (UsePreallocation)
     return allocateFromSlab(Size, Alignment, false /* isCode */);
 
@@ -374,11 +388,6 @@ static int executeInput() {
   doPreallocation(MemMgr);
   RuntimeDyld Dyld(MemMgr, MemMgr);
 
-  // FIXME: Preserve buffers until resolveRelocations time to work around a bug
-  //        in RuntimeDyldELF.
-  // This fixme should be fixed ASAP. This is a very brittle workaround.
-  std::vector<std::unique_ptr<MemoryBuffer>> InputBuffers;
-
   // If we don't have any input files, read from stdin.
   if (!InputFileList.size())
     InputFileList.push_back("-");
@@ -395,7 +404,6 @@ static int executeInput() {
       return Error("unable to create object file: '" + EC.message() + "'");
 
     ObjectFile &Obj = **MaybeObj;
-    InputBuffers.push_back(std::move(*InputBuffer));
 
     // Load the object file
     Dyld.loadObject(Obj);
@@ -642,11 +650,6 @@ static int linkAndVerify() {
   RuntimeDyldChecker Checker(Dyld, Disassembler.get(), InstPrinter.get(),
                              llvm::dbgs());
 
-  // FIXME: Preserve buffers until resolveRelocations time to work around a bug
-  //        in RuntimeDyldELF.
-  // This fixme should be fixed ASAP. This is a very brittle workaround.
-  std::vector<std::unique_ptr<MemoryBuffer>> InputBuffers;
-
   // If we don't have any input files, read from stdin.
   if (!InputFileList.size())
     InputFileList.push_back("-");
@@ -665,7 +668,6 @@ static int linkAndVerify() {
       return Error("unable to create object file: '" + EC.message() + "'");
 
     ObjectFile &Obj = **MaybeObj;
-    InputBuffers.push_back(std::move(*InputBuffer));
 
     // Load the object file
     Dyld.loadObject(Obj);

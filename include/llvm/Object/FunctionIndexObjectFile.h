@@ -88,7 +88,7 @@ public:
   /// summary/index.
   static ErrorOr<std::unique_ptr<FunctionIndexObjectFile>>
   create(MemoryBufferRef Object, DiagnosticHandlerFunction DiagnosticHandler,
-         const Module *ExportingModule = nullptr, bool IsLazy = false);
+         bool IsLazy = false);
 
   /// \brief Parse the function summary information for function with the
   /// given name out of the given buffer. Parsed information is
@@ -99,6 +99,12 @@ public:
                                  StringRef FunctionName);
 };
 }
+
+/// Parse the function index out of an IR file and return the function
+/// index object if found, or nullptr if not.
+ErrorOr<std::unique_ptr<FunctionInfoIndex>>
+getFunctionIndexForFile(StringRef Path,
+                        DiagnosticHandlerFunction DiagnosticHandler);
 }
 
 #endif
