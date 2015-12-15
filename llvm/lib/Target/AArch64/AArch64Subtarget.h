@@ -33,18 +33,21 @@ class Triple;
 
 class AArch64Subtarget : public AArch64GenSubtargetInfo {
 protected:
-  enum ARMProcFamilyEnum {Others, CortexA53, CortexA57, Cyclone};
+  enum ARMProcFamilyEnum {Others, CortexA35, CortexA53, CortexA57, Cyclone};
 
   /// ARMProcFamily - ARM processor family: Cortex-A53, Cortex-A57, and others.
   ARMProcFamilyEnum ARMProcFamily;
 
   bool HasV8_1aOps;
+  bool HasV8_2aOps;
 
   bool HasFPARMv8;
   bool HasNEON;
   bool HasCrypto;
   bool HasCRC;
   bool HasPerfMon;
+  bool HasFullFP16;
+  bool HasSPE;
 
   // HasZeroCycleRegMove - Has zero-cycle register mov instructions.
   bool HasZeroCycleRegMove;
@@ -103,6 +106,7 @@ public:
   }
 
   bool hasV8_1aOps() const { return HasV8_1aOps; }
+  bool hasV8_2aOps() const { return HasV8_2aOps; }
 
   bool hasZeroCycleRegMove() const { return HasZeroCycleRegMove; }
 
@@ -120,6 +124,8 @@ public:
   bool supportsAddressTopByteIgnored() const;
 
   bool hasPerfMon() const { return HasPerfMon; }
+  bool hasFullFP16() const { return HasFullFP16; }
+  bool hasSPE() const { return HasSPE; }
 
   bool isLittleEndian() const { return IsLittle; }
 

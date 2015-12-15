@@ -133,8 +133,19 @@ def SIsampled : SDSample<"AMDGPUISD::SAMPLED">;
 def SIsamplel : SDSample<"AMDGPUISD::SAMPLEL">;
 
 def SIconstdata_ptr : SDNode<
-  "AMDGPUISD::CONST_DATA_PTR", SDTypeProfile <1, 0, [SDTCisVT<0, i64>]>
+  "AMDGPUISD::CONST_DATA_PTR", SDTypeProfile <1, 1, [SDTCisVT<0, i64>,
+                                                     SDTCisVT<0, i64>]>
 >;
+
+def mubuf_load : PatFrag <(ops node:$ptr), (load node:$ptr), [{
+	return isGlobalLoad(cast<LoadSDNode>(N)) ||
+         isConstantLoad(cast<LoadSDNode>(N), -1);
+}]>;
+
+def smrd_load : PatFrag <(ops node:$ptr), (load node:$ptr), [{
+  return isConstantLoad(cast<LoadSDNode>(N), -1) &&
+  static_cast<const SITargetLowering *>(getTargetLowering())->isMemOpUniform(N);
+}]>;
 
 //===----------------------------------------------------------------------===//
 // SDNodes and PatFrag for local loads and stores to enable s_mov_b32 m0, -1
@@ -365,6 +376,8 @@ def sopp_brtarget : Operand<OtherVT> {
   let OperandType = "OPERAND_PCREL";
   let ParserMatchClass = SoppBrTarget;
 }
+
+def const_ga : Operand<iPTR>;
 
 include "SIInstrFormats.td"
 include "VIInstrFormats.td"

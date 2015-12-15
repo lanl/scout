@@ -11,7 +11,7 @@
 // portability and independence.
 //===----------------------------------------------------------------------===//
 FUZZER_FLAG_INT(verbosity, 1, "Verbosity level.")
-FUZZER_FLAG_INT(seed, 0, "Random seed. If 0, seed is generated.")
+FUZZER_FLAG_UNSIGNED(seed, 0, "Random seed. If 0, seed is generated.")
 FUZZER_FLAG_INT(runs, -1,
             "Number of individual test runs (-1 for infinite runs).")
 FUZZER_FLAG_INT(max_len, 64, "Maximum length of the test input.")
@@ -67,6 +67,11 @@ FUZZER_FLAG_STRING(test_single_input, "Use specified file as test input.")
 FUZZER_FLAG_STRING(artifact_prefix, "Write fuzzing artifacts (crash, "
                                     "timeout, or slow inputs) as "
                                     "$(artifact_prefix)file")
+FUZZER_FLAG_STRING(exact_artifact_path,
+                   "Write the single artifact on failure (crash, timeout) "
+                   "as $(exact_artifact_path). This overrides -artifact_prefix "
+                   "and will not use checksum in the file name. Do not "
+                   "use the same path for several parallel processes.")
 FUZZER_FLAG_INT(drill, 0, "Experimental: fuzz using a single unit as the seed "
                           "corpus, then merge with the initial corpus")
 FUZZER_FLAG_INT(output_csv, 0, "Enable pulse output in CSV format.")

@@ -302,12 +302,8 @@ public:
 
     if (TLI->isOperationLegalOrPromote(ISD, LT.second)) {
       // The operation is legal. Assume it costs 1.
-      // If the type is split to multiple registers, assume that there is some
-      // overhead to this.
       // TODO: Once we have extract/insert subvector cost we need to use them.
-      if (LT.first > 1)
-        return LT.first * 2 * OpCost;
-      return LT.first * 1 * OpCost;
+      return LT.first * OpCost;
     }
 
     if (!TLI->isOperationExpand(ISD, LT.second)) {
@@ -496,13 +492,11 @@ public:
       // itself. Unless the corresponding extending load or truncating store is
       // legal, then this will scalarize.
       TargetLowering::LegalizeAction LA = TargetLowering::Expand;
-      EVT MemVT = getTLI()->getValueType(DL, Src, true);
-      if (MemVT.isSimple() && MemVT != MVT::Other) {
-        if (Opcode == Instruction::Store)
-          LA = getTLI()->getTruncStoreAction(LT.second, MemVT.getSimpleVT());
-        else
-          LA = getTLI()->getLoadExtAction(ISD::EXTLOAD, LT.second, MemVT);
-      }
+      EVT MemVT = getTLI()->getValueType(DL, Src);
+      if (Opcode == Instruction::Store)
+        LA = getTLI()->getTruncStoreAction(LT.second, MemVT);
+      else
+        LA = getTLI()->getLoadExtAction(ISD::EXTLOAD, LT.second, MemVT);
 
       if (LA != TargetLowering::Legal && LA != TargetLowering::Custom) {
         // This is a vector load/store for some illegal type that is scalarized.

@@ -655,12 +655,17 @@ inline int64_t SignExtend64(uint64_t X, unsigned B) {
 
 /// \brief Add two unsigned integers, X and Y, of type T.
 /// Clamp the result to the maximum representable value of T on overflow.
+/// ResultOverflowed indicates if the result is larger than the maximum
+/// representable value of type T.
 template <typename T>
 typename std::enable_if<std::is_unsigned<T>::value, T>::type
-SaturatingAdd(T X, T Y) {
+SaturatingAdd(T X, T Y, bool *ResultOverflowed = nullptr) {
+  bool Dummy;
+  bool &Overflowed = ResultOverflowed ? *ResultOverflowed : Dummy;
   // Hacker's Delight, p. 29
   T Z = X + Y;
-  if (Z < X || Z < Y)
+  Overflowed = (Z < X || Z < Y);
+  if (Overflowed)
     return std::numeric_limits<T>::max();
   else
     return Z;
@@ -668,15 +673,48 @@ SaturatingAdd(T X, T Y) {
 
 /// \brief Multiply two unsigned integers, X and Y, of type T.
 /// Clamp the result to the maximum representable value of T on overflow.
+/// ResultOverflowed indicates if the result is larger than the maximum
+/// representable value of type T.
 template <typename T>
 typename std::enable_if<std::is_unsigned<T>::value, T>::type
-SaturatingMultiply(T X, T Y) {
-  // Hacker's Delight, p. 30
-  T Z = X * Y;
-  if (Y != 0 && Z / Y != X)
-    return std::numeric_limits<T>::max();
-  else
-    return Z;
+SaturatingMultiply(T X, T Y, bool *ResultOverflowed = nullptr) {
+  bool Dummy;
+  bool &Overflowed = ResultOverflowed ? *ResultOverflowed : Dummy;
+
+  // Hacker's Delight, p. 30 has a different algorithm, but we don't use that
+  // because it fails for uint16_t (where multiplication can have undefined
+  // behavior due to promotion to int), and requires a division in addition
+  // to the multiplication.
+
+  Overflowed = false;
+
+  // Log2(Z) would be either Log2Z or Log2Z + 1.
+  // Special case: if X or Y is 0, Log2_64 gives -1, and Log2Z
+  // will necessarily be less than Log2Max as desired.
+  int Log2Z = Log2_64(X) + Log2_64(Y);
+  const T Max = std::numeric_limits<T>::max();
+  int Log2Max = Log2_64(Max);
+  if (Log2Z < Log2Max) {
+    return X * Y;
+  }
+  if (Log2Z > Log2Max) {
+    Overflowed = true;
+    return Max;
+  }
+
+  // We're going to use the top bit, and maybe overflow one
+  // bit past it. Multiply all but the bottom bit then add
+  // that on at the end.
+  T Z = (X >> 1) * Y;
+  if (Z & ~(Max >> 1)) {
+    Overflowed = true;
+    return Max;
+  }
+  Z <<= 1;
+  if (X & 1)
+    return SaturatingAdd(Z, Y, ResultOverflowed);
+
+  return Z;
 }
 
 extern const float huge_valf;

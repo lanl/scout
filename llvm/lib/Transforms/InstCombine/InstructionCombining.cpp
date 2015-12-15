@@ -42,9 +42,9 @@
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/ConstantFolding.h"
+#include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Analysis/LibCallSemantics.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
@@ -1245,16 +1245,11 @@ Value *InstCombiner::Descale(Value *Val, APInt Scale, bool &NoSignedWrap) {
 /// specified one but with other operands.
 static Value *CreateBinOpAsGiven(BinaryOperator &Inst, Value *LHS, Value *RHS,
                                  InstCombiner::BuilderTy *B) {
-  Value *BORes = B->CreateBinOp(Inst.getOpcode(), LHS, RHS);
-  if (BinaryOperator *NewBO = dyn_cast<BinaryOperator>(BORes)) {
-    if (isa<OverflowingBinaryOperator>(NewBO)) {
-      NewBO->setHasNoSignedWrap(Inst.hasNoSignedWrap());
-      NewBO->setHasNoUnsignedWrap(Inst.hasNoUnsignedWrap());
-    }
-    if (isa<PossiblyExactOperator>(NewBO))
-      NewBO->setIsExact(Inst.isExact());
-  }
-  return BORes;
+  Value *BO = B->CreateBinOp(Inst.getOpcode(), LHS, RHS);
+  // If LHS and RHS are constant, BO won't be a binary operator.
+  if (BinaryOperator *NewBO = dyn_cast<BinaryOperator>(BO))
+    NewBO->copyIRFlags(&Inst);
+  return BO;
 }
 
 /// \brief Makes transformation of binary operation specific for vector types.
@@ -1967,7 +1962,7 @@ Instruction *InstCombiner::visitAllocSite(Instruction &MI) {
 
     if (InvokeInst *II = dyn_cast<InvokeInst>(&MI)) {
       // Replace invoke with a NOP intrinsic to maintain the original CFG
-      Module *M = II->getParent()->getParent()->getParent();
+      Module *M = II->getModule();
       Function *F = Intrinsic::getDeclaration(M, Intrinsic::donothing);
       InvokeInst::Create(F, II->getNormalDest(), II->getUnwindDest(),
                          None, "", II->getParent());
@@ -2316,9 +2311,10 @@ Instruction *InstCombiner::visitExtractValueInst(ExtractValueInst &EV) {
   }
   if (LoadInst *L = dyn_cast<LoadInst>(Agg))
     // If the (non-volatile) load only has one use, we can rewrite this to a
-    // load from a GEP. This reduces the size of the load.
-    // FIXME: If a load is used only by extractvalue instructions then this
-    //        could be done regardless of having multiple uses.
+    // load from a GEP. This reduces the size of the load. If a load is used
+    // only by extractvalue instructions then this either must have been
+    // optimized before, or it is a struct with padding, in which case we
+    // don't want to do the transformation as it loses padding knowledge.
     if (L->isSimple() && L->hasOneUse()) {
       // extractvalue has integer indices, getelementptr has Value*s. Convert.
       SmallVector<Value*, 4> Indices;

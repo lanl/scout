@@ -20,8 +20,8 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Analysis/LibCallSemantics.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/CFG.h"
@@ -1136,9 +1136,10 @@ DbgDeclareInst *llvm::FindAllocaDbgDeclare(Value *V) {
   return nullptr;
 }
 
-bool llvm::replaceDbgDeclareForAlloca(AllocaInst *AI, Value *NewAllocaAddress,
-                                      DIBuilder &Builder, bool Deref, int Offset) {
-  DbgDeclareInst *DDI = FindAllocaDbgDeclare(AI);
+bool llvm::replaceDbgDeclare(Value *Address, Value *NewAddress,
+                             Instruction *InsertBefore, DIBuilder &Builder,
+                             bool Deref, int Offset) {
+  DbgDeclareInst *DDI = FindAllocaDbgDeclare(Address);
   if (!DDI)
     return false;
   DebugLoc Loc = DDI->getDebugLoc();
@@ -1168,15 +1169,18 @@ bool llvm::replaceDbgDeclareForAlloca(AllocaInst *AI, Value *NewAllocaAddress,
 
   // Insert llvm.dbg.declare immediately after the original alloca, and remove
   // old llvm.dbg.declare.
-  Builder.insertDeclare(NewAllocaAddress, DIVar, DIExpr, Loc,
-                        AI->getNextNode());
+  Builder.insertDeclare(NewAddress, DIVar, DIExpr, Loc, InsertBefore);
   DDI->eraseFromParent();
   return true;
 }
 
-/// changeToUnreachable - Insert an unreachable instruction before the specified
-/// instruction, making it and the rest of the code in the block dead.
-static void changeToUnreachable(Instruction *I, bool UseLLVMTrap) {
+bool llvm::replaceDbgDeclareForAlloca(AllocaInst *AI, Value *NewAllocaAddress,
+                                      DIBuilder &Builder, bool Deref, int Offset) {
+  return replaceDbgDeclare(AI, NewAllocaAddress, AI->getNextNode(), Builder,
+                           Deref, Offset);
+}
+
+void llvm::changeToUnreachable(Instruction *I, bool UseLLVMTrap) {
   BasicBlock *BB = I->getParent();
   // Loop over all of the successors, removing BB's entry from any PHI
   // nodes.
@@ -1204,8 +1208,11 @@ static void changeToUnreachable(Instruction *I, bool UseLLVMTrap) {
 
 /// changeToCall - Convert the specified invoke into a normal call.
 static void changeToCall(InvokeInst *II) {
-  SmallVector<Value*, 8> Args(II->op_begin(), II->op_end() - 3);
-  CallInst *NewCall = CallInst::Create(II->getCalledValue(), Args, "", II);
+  SmallVector<Value*, 8> Args(II->arg_begin(), II->arg_end());
+  SmallVector<OperandBundleDef, 1> OpBundles;
+  II->getOperandBundlesAsDefs(OpBundles);
+  CallInst *NewCall = CallInst::Create(II->getCalledValue(), Args, OpBundles,
+                                       "", II);
   NewCall->takeName(II);
   NewCall->setCallingConv(II->getCallingConv());
   NewCall->setAttributes(II->getAttributes());
@@ -1329,19 +1336,15 @@ void llvm::removeUnwindEdge(BasicBlock *BB) {
   if (auto *CRI = dyn_cast<CleanupReturnInst>(TI)) {
     NewTI = CleanupReturnInst::Create(CRI->getCleanupPad(), nullptr, CRI);
     UnwindDest = CRI->getUnwindDest();
-  } else if (auto *CEP = dyn_cast<CleanupEndPadInst>(TI)) {
-    NewTI = CleanupEndPadInst::Create(CEP->getCleanupPad(), nullptr, CEP);
-    UnwindDest = CEP->getUnwindDest();
-  } else if (auto *CEP = dyn_cast<CatchEndPadInst>(TI)) {
-    NewTI = CatchEndPadInst::Create(CEP->getContext(), nullptr, CEP);
-    UnwindDest = CEP->getUnwindDest();
-  } else if (auto *TPI = dyn_cast<TerminatePadInst>(TI)) {
-    SmallVector<Value *, 3> TerminatePadArgs;
-    for (Value *Operand : TPI->arg_operands())
-      TerminatePadArgs.push_back(Operand);
-    NewTI = TerminatePadInst::Create(TPI->getContext(), nullptr,
-                                     TerminatePadArgs, TPI);
-    UnwindDest = TPI->getUnwindDest();
+  } else if (auto *CatchSwitch = dyn_cast<CatchSwitchInst>(TI)) {
+    auto *NewCatchSwitch = CatchSwitchInst::Create(
+        CatchSwitch->getParentPad(), nullptr, CatchSwitch->getNumHandlers(),
+        CatchSwitch->getName(), CatchSwitch);
+    for (BasicBlock *PadBB : CatchSwitch->handlers())
+      NewCatchSwitch->addHandler(PadBB);
+
+    NewTI = NewCatchSwitch;
+    UnwindDest = CatchSwitch->getUnwindDest();
   } else {
     llvm_unreachable("Could not find unwind successor");
   }
@@ -1349,6 +1352,7 @@ void llvm::removeUnwindEdge(BasicBlock *BB) {
   NewTI->takeName(TI);
   NewTI->setDebugLoc(TI->getDebugLoc());
   UnwindDest->removePredecessor(BB);
+  TI->replaceAllUsesWith(NewTI);
   TI->eraseFromParent();
 }
 

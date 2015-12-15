@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "InstPrinter/WebAssemblyInstPrinter.h"
+#include "MCTargetDesc/WebAssemblyMCTargetDesc.h"
 #include "WebAssembly.h"
 #include "WebAssemblyMachineFunctionInfo.h"
 #include "llvm/MC/MCExpr.h"
@@ -44,14 +45,15 @@ void WebAssemblyInstPrinter::printRegName(raw_ostream &OS,
 
 void WebAssemblyInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
                                        StringRef Annot,
-                                       const MCSubtargetInfo &STI) {
+                                       const MCSubtargetInfo & /*STI*/) {
   printInstruction(MI, OS);
 
   const MCInstrDesc &Desc = MII.get(MI->getOpcode());
   if (Desc.isVariadic())
     for (unsigned i = Desc.getNumOperands(), e = MI->getNumOperands(); i < e;
          ++i) {
-      OS << ", ";
+      if (i != 0)
+        OS << ", ";
       printOperand(MI, i, OS);
     }
 
@@ -88,12 +90,39 @@ void WebAssemblyInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
       O << "$push" << (WAReg & INT32_MAX);
     else
       O << "$discard";
-  } else if (Op.isImm())
-    O << Op.getImm();
-  else if (Op.isFPImm())
+    // Add a '=' suffix if this is a def.
+    if (OpNo < MII.get(MI->getOpcode()).getNumDefs())
+      O << '=';
+  } else if (Op.isImm()) {
+    switch (MI->getOpcode()) {
+    case WebAssembly::PARAM:
+    case WebAssembly::RESULT:
+    case WebAssembly::LOCAL:
+      O << WebAssembly::TypeToString(MVT::SimpleValueType(Op.getImm()));
+      break;
+    default:
+      O << Op.getImm();
+      break;
+    }
+  } else if (Op.isFPImm())
     O << toString(APFloat(Op.getFPImm()));
   else {
     assert(Op.isExpr() && "unknown operand kind in printOperand");
     Op.getExpr()->print(O, &MAI);
+  }
+}
+
+const char *llvm::WebAssembly::TypeToString(MVT Ty) {
+  switch (Ty.SimpleTy) {
+  case MVT::i32:
+    return "i32";
+  case MVT::i64:
+    return "i64";
+  case MVT::f32:
+    return "f32";
+  case MVT::f64:
+    return "f64";
+  default:
+    llvm_unreachable("unsupported type");
   }
 }
