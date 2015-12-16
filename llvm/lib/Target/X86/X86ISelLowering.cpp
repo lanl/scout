@@ -16173,12 +16173,12 @@ static int getSEHRegistrationNodeSize(const Function *Fn) {
       "can only recover FP for 32-bit MSVC EH personality functions");
 }
 
-/// When the 32-bit MSVC runtime transfers control to us, either to an outlined
+/// When the MSVC runtime transfers control to us, either to an outlined
 /// function or when returning to a parent frame after catching an exception, we
 /// recover the parent frame pointer by doing arithmetic on the incoming EBP.
 /// Here's the math:
 ///   RegNodeBase = EntryEBP - RegNodeSize
-///   ParentFP = RegNodeBase - RegNodeFrameOffset
+///   ParentFP = RegNodeBase - ParentFrameOffset
 /// Subtracting RegNodeSize takes us to the offset of the registration node, and
 /// subtracting the offset (negative on x86) takes us back to the parent FP.
 static SDValue recoverFramePointer(SelectionDAG &DAG, const Function *Fn,
@@ -16195,22 +16195,28 @@ static SDValue recoverFramePointer(SelectionDAG &DAG, const Function *Fn,
   if (!Fn->hasPersonalityFn())
     return EntryEBP;
 
-  int RegNodeSize = getSEHRegistrationNodeSize(Fn);
-
   // Get an MCSymbol that will ultimately resolve to the frame offset of the EH
-  // registration.
+  // registration, or the .set_setframe offset.
   MCSymbol *OffsetSym =
       MF.getMMI().getContext().getOrCreateParentFrameOffsetSymbol(
           GlobalValue::getRealLinkageName(Fn->getName()));
   SDValue OffsetSymVal = DAG.getMCSymbol(OffsetSym, PtrVT);
-  SDValue RegNodeFrameOffset =
+  SDValue ParentFrameOffset =
       DAG.getNode(ISD::LOCAL_RECOVER, dl, PtrVT, OffsetSymVal);
 
+  // Return EntryEBP + ParentFrameOffset for x64. This adjusts from RSP after
+  // prologue to RBP in the parent function.
+  const X86Subtarget &Subtarget =
+      static_cast<const X86Subtarget &>(DAG.getSubtarget());
+  if (Subtarget.is64Bit())
+    return DAG.getNode(ISD::ADD, dl, PtrVT, EntryEBP, ParentFrameOffset);
+
+  int RegNodeSize = getSEHRegistrationNodeSize(Fn);
   // RegNodeBase = EntryEBP - RegNodeSize
-  // ParentFP = RegNodeBase - RegNodeFrameOffset
+  // ParentFP = RegNodeBase - ParentFrameOffset
   SDValue RegNodeBase = DAG.getNode(ISD::SUB, dl, PtrVT, EntryEBP,
                                     DAG.getConstant(RegNodeSize, dl, PtrVT));
-  return DAG.getNode(ISD::SUB, dl, PtrVT, RegNodeBase, RegNodeFrameOffset);
+  return DAG.getNode(ISD::SUB, dl, PtrVT, RegNodeBase, ParentFrameOffset);
 }
 
 static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget,
@@ -24944,6 +24950,59 @@ static SDValue PerformSHLCombine(SDNode *N, SelectionDAG &DAG) {
   return SDValue();
 }
 
+static SDValue PerformSRACombine(SDNode *N, SelectionDAG &DAG) {
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  EVT VT = N0.getValueType();
+  unsigned Size = VT.getSizeInBits();
+
+  // fold (ashr (shl, a, [56,48,32,24,16]), SarConst)
+  // into (shl, (sext (a), [56,48,32,24,16] - SarConst)) or
+  // into (lshr, (sext (a), SarConst - [56,48,32,24,16]))
+  // depending on sign of (SarConst - [56,48,32,24,16])
+
+  // sexts in X86 are MOVs. The MOVs have the same code size
+  // as above SHIFTs (only SHIFT on 1 has lower code size).
+  // However the MOVs have 2 advantages to a SHIFT:
+  // 1. MOVs can write to a register that differs from source
+  // 2. MOVs accept memory operands
+
+  if (!VT.isInteger() || VT.isVector() || N1.getOpcode() != ISD::Constant ||
+      N0.getOpcode() != ISD::SHL || !N0.hasOneUse() ||
+      N0.getOperand(1).getOpcode() != ISD::Constant)
+    return SDValue();
+
+  SDValue N00 = N0.getOperand(0);
+  SDValue N01 = N0.getOperand(1);
+  APInt ShlConst = (cast<ConstantSDNode>(N01))->getAPIntValue();
+  APInt SarConst = (cast<ConstantSDNode>(N1))->getAPIntValue();
+  EVT CVT = N1.getValueType();
+
+  if (SarConst.isNegative())
+    return SDValue();
+
+  for (MVT SVT : MVT::integer_valuetypes()) {
+    unsigned ShiftSize = SVT.getSizeInBits();
+    // skipping types without corresponding sext/zext and
+    // ShlConst that is not one of [56,48,32,24,16]
+    if (ShiftSize < 8 || ShiftSize > 64 || ShlConst != Size - ShiftSize)
+      continue;
+    SDLoc DL(N);
+    SDValue NN =
+        DAG.getNode(ISD::SIGN_EXTEND_INREG, DL, VT, N00, DAG.getValueType(SVT));
+    SarConst = SarConst - (Size - ShiftSize);
+    if (SarConst == 0)
+      return NN;
+    else if (SarConst.isNegative())
+      return DAG.getNode(ISD::SHL, DL, VT, NN,
+                         DAG.getConstant(-SarConst, DL, CVT));
+    else
+      return DAG.getNode(ISD::SRA, DL, VT, NN,
+                         DAG.getConstant(SarConst, DL, CVT));
+  }
+  return SDValue();
+}
+
 /// \brief Returns a vector of 0s if the node in input is a vector logical
 /// shift by a constant amount which is known to be bigger than or equal
 /// to the vector element size in bits.
@@ -24981,6 +25040,10 @@ static SDValue PerformShiftCombine(SDNode* N, SelectionDAG &DAG,
                                    const X86Subtarget *Subtarget) {
   if (N->getOpcode() == ISD::SHL)
     if (SDValue V = PerformSHLCombine(N, DAG))
+      return V;
+
+  if (N->getOpcode() == ISD::SRA)
+    if (SDValue V = PerformSRACombine(N, DAG))
       return V;
 
   // Try to fold this logical shift into a zero vector.

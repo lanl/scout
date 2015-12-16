@@ -1301,7 +1301,9 @@ void Verifier::VerifyAttributeTypes(AttributeSet Attrs, unsigned Idx,
         I->getKindAsEnum() == Attribute::JumpTable ||
         I->getKindAsEnum() == Attribute::Convergent ||
         I->getKindAsEnum() == Attribute::ArgMemOnly ||
-        I->getKindAsEnum() == Attribute::NoRecurse) {
+        I->getKindAsEnum() == Attribute::NoRecurse ||
+        I->getKindAsEnum() == Attribute::InaccessibleMemOnly ||
+        I->getKindAsEnum() == Attribute::InaccessibleMemOrArgMemOnly) {
       if (!isFunction) {
         CheckFailed("Attribute '" + I->getAsString() +
                     "' only applies to functions!", V);
@@ -1470,6 +1472,18 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT, AttributeSet Attrs,
       !(Attrs.hasAttribute(AttributeSet::FunctionIndex, Attribute::ReadNone) &&
         Attrs.hasAttribute(AttributeSet::FunctionIndex, Attribute::ReadOnly)),
       "Attributes 'readnone and readonly' are incompatible!", V);
+
+  Assert(
+      !(Attrs.hasAttribute(AttributeSet::FunctionIndex, Attribute::ReadNone) &&
+        Attrs.hasAttribute(AttributeSet::FunctionIndex, 
+                           Attribute::InaccessibleMemOrArgMemOnly)),
+      "Attributes 'readnone and inaccessiblemem_or_argmemonly' are incompatible!", V);
+
+  Assert(
+      !(Attrs.hasAttribute(AttributeSet::FunctionIndex, Attribute::ReadNone) &&
+        Attrs.hasAttribute(AttributeSet::FunctionIndex, 
+                           Attribute::InaccessibleMemOnly)),
+      "Attributes 'readnone and inaccessiblememonly' are incompatible!", V);
 
   Assert(
       !(Attrs.hasAttribute(AttributeSet::FunctionIndex, Attribute::NoInline) &&
@@ -2782,7 +2796,8 @@ void Verifier::visitLoadInst(LoadInst &LI) {
     Assert(LI.getAlignment() != 0,
            "Atomic load must specify explicit alignment", &LI);
     if (!ElTy->isPointerTy()) {
-      Assert(ElTy->isIntegerTy(), "atomic load operand must have integer type!",
+      Assert(ElTy->isIntegerTy() || ElTy->isFloatingPointTy(),
+             "atomic load operand must have integer or floating point type!",
              &LI, ElTy);
       unsigned Size = ElTy->getPrimitiveSizeInBits();
       Assert(Size >= 8 && !(Size & (Size - 1)),
@@ -2811,8 +2826,9 @@ void Verifier::visitStoreInst(StoreInst &SI) {
     Assert(SI.getAlignment() != 0,
            "Atomic store must specify explicit alignment", &SI);
     if (!ElTy->isPointerTy()) {
-      Assert(ElTy->isIntegerTy(),
-             "atomic store operand must have integer type!", &SI, ElTy);
+      Assert(ElTy->isIntegerTy() || ElTy->isFloatingPointTy(),
+             "atomic store operand must have integer or floating point type!",
+             &SI, ElTy);
       unsigned Size = ElTy->getPrimitiveSizeInBits();
       Assert(Size >= 8 && !(Size & (Size - 1)),
              "atomic store operand must be power-of-two byte-sized integer",
