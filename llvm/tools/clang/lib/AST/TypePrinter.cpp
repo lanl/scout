@@ -945,12 +945,13 @@ void TypePrinter::printTag(TagDecl *D, raw_ostream &OS) {
   } else {
     // Make an unambiguous representation for anonymous types, e.g.
     //   (anonymous enum at /usr/include/string.h:120:9)
-    
+    OS << (Policy.MSVCFormatting ? '`' : '(');
+
     if (isa<CXXRecordDecl>(D) && cast<CXXRecordDecl>(D)->isLambda()) {
-      OS << "(lambda";
+      OS << "lambda";
       HasKindDecoration = true;
     } else {
-      OS << "(anonymous";
+      OS << "anonymous";
     }
     
     if (Policy.AnonymousTagLocations) {
@@ -968,8 +969,8 @@ void TypePrinter::printTag(TagDecl *D, raw_ostream &OS) {
            << ':' << PLoc.getColumn();
       }
     }
-    
-    OS << ')';
+
+    OS << (Policy.MSVCFormatting ? '\'' : ')');
   }
 
   // If this is a class template specialization, print the template
@@ -1421,6 +1422,7 @@ TemplateSpecializationType::PrintTemplateArgumentList(
                                                 unsigned NumArgs,
                                                   const PrintingPolicy &Policy,
                                                       bool SkipBrackets) {
+  const char *Comma = Policy.MSVCFormatting ? "," : ", ";
   if (!SkipBrackets)
     OS << '<';
   
@@ -1431,14 +1433,14 @@ TemplateSpecializationType::PrintTemplateArgumentList(
     llvm::raw_svector_ostream ArgOS(Buf);
     if (Args[Arg].getKind() == TemplateArgument::Pack) {
       if (Args[Arg].pack_size() && Arg > 0)
-        OS << ", ";
+        OS << Comma;
       PrintTemplateArgumentList(ArgOS,
                                 Args[Arg].pack_begin(), 
                                 Args[Arg].pack_size(), 
                                 Policy, true);
     } else {
       if (Arg > 0)
-        OS << ", ";
+        OS << Comma;
       Args[Arg].print(Policy, ArgOS);
     }
     StringRef ArgString = ArgOS.str();
@@ -1470,11 +1472,12 @@ PrintTemplateArgumentList(raw_ostream &OS,
                           const TemplateArgumentLoc *Args, unsigned NumArgs,
                           const PrintingPolicy &Policy) {
   OS << '<';
+  const char *Comma = Policy.MSVCFormatting ? "," : ", ";
 
   bool needSpace = false;
   for (unsigned Arg = 0; Arg < NumArgs; ++Arg) {
     if (Arg > 0)
-      OS << ", ";
+      OS << Comma;
     
     // Print the argument into a string.
     SmallString<128> Buf;
