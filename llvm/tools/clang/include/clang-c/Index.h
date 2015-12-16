@@ -32,7 +32,7 @@
  * compatible, thus CINDEX_VERSION_MAJOR is expected to remain stable.
  */
 #define CINDEX_VERSION_MAJOR 0
-#define CINDEX_VERSION_MINOR 31
+#define CINDEX_VERSION_MINOR 32
 
 #define CINDEX_VERSION_ENCODE(major, minor) ( \
       ((major) * 10000)                       \
@@ -284,7 +284,6 @@ CINDEX_LINKAGE unsigned clang_CXIndex_getGlobalOptions(CXIndex);
  * \brief A particular source file that is part of a translation unit.
  */
 typedef void *CXFile;
-
 
 /**
  * \brief Retrieve the complete file and path name of the given file.
@@ -704,7 +703,6 @@ CINDEX_LINKAGE unsigned clang_getNumDiagnosticsInSet(CXDiagnosticSet Diags);
  */
 CINDEX_LINKAGE CXDiagnostic clang_getDiagnosticInSet(CXDiagnosticSet Diags,
                                                      unsigned Index);
-
 
 /**
  * \brief Describes the kind of error that occurred (if any) in a call to
@@ -1202,7 +1200,15 @@ enum CXTranslationUnit_Flags {
    * included into the set of code completions returned from this translation
    * unit.
    */
-  CXTranslationUnit_IncludeBriefCommentsInCodeCompletion = 0x80
+  CXTranslationUnit_IncludeBriefCommentsInCodeCompletion = 0x80,
+
+  /**
+   * \brief Used to indicate that the precompiled preamble should be created on
+   * the first parse. Otherwise it will be created on the first reparse. This
+   * trades runtime on the first parse (serializing the preamble takes time) for
+   * reduced runtime on the second parse (can now reuse the preamble).
+   */
+  CXTranslationUnit_CreatePreambleOnFirstParse = 0x100
 };
 
 /**
@@ -2255,7 +2261,19 @@ enum CXCursorKind {
    */
   CXCursor_OMPTargetDataDirective        = 257,
 
-  CXCursor_LastStmt                      = CXCursor_OMPTargetDataDirective,
+  /** \brief OpenMP taskloop directive.
+   */
+  CXCursor_OMPTaskLoopDirective          = 258,
+
+  /** \brief OpenMP taskloop simd directive.
+   */
+  CXCursor_OMPTaskLoopSimdDirective      = 259,
+
+   /** \brief OpenMP distribute directive.
+   */
+  CXCursor_OMPDistributeDirective        = 260,
+
+  CXCursor_LastStmt                      = CXCursor_OMPDistributeDirective,
 
   /**
    * \brief Cursor that represents the translation unit itself.
@@ -2290,7 +2308,9 @@ enum CXCursorKind {
   CXCursor_CUDAHostAttr                  = 415,
   CXCursor_CUDASharedAttr                = 416,
   CXCursor_VisibilityAttr                = 417,
-  CXCursor_LastAttr                      = CXCursor_VisibilityAttr,
+  CXCursor_DLLExport                     = 418,
+  CXCursor_DLLImport                     = 419,
+  CXCursor_LastAttr                      = CXCursor_DLLImport,
 
   /* Preprocessing */
   CXCursor_PreprocessingDirective        = 500,
@@ -2616,7 +2636,6 @@ CINDEX_LINKAGE enum CXLanguageKind clang_getCursorLanguage(CXCursor cursor);
  */
 CINDEX_LINKAGE CXTranslationUnit clang_Cursor_getTranslationUnit(CXCursor);
 
-
 /**
  * \brief A fast container representing a set of CXCursors.
  */
@@ -2934,7 +2953,6 @@ enum CXCallingConv {
   CXCallingConv_Invalid = 100,
   CXCallingConv_Unexposed = 200
 };
-
 
 /**
  * \brief The type of an element in the abstract syntax tree.
@@ -3373,7 +3391,6 @@ CINDEX_LINKAGE long long clang_Cursor_getOffsetOfField(CXCursor C);
  */
 CINDEX_LINKAGE unsigned clang_Cursor_isAnonymous(CXCursor C);
 
-
 enum CXRefQualifierKind {
   /** \brief No ref-qualifier was provided. */
   CXRefQualifier_None = 0,
@@ -3505,7 +3522,6 @@ CINDEX_LINKAGE CXCursor clang_getOverloadedDecl(CXCursor cursor,
  *
  * @{
  */
-
 
 /**
  * \brief For cursors representing an iboutletcollection attribute,
@@ -3660,7 +3676,6 @@ CINDEX_LINKAGE CXString
 CINDEX_LINKAGE CXString
   clang_constructUSR_ObjCProtocol(const char *protocol_name);
 
-
 /**
  * \brief Construct a USR for a specified Objective-C instance variable and
  *   the USR for its containing class.
@@ -3785,7 +3800,6 @@ CINDEX_LINKAGE unsigned clang_isCursorDefinition(CXCursor);
  * \returns The canonical cursor for the entity referred to by the given cursor.
  */
 CINDEX_LINKAGE CXCursor clang_getCanonicalCursor(CXCursor);
-
 
 /**
  * \brief If the cursor points to a selector identifier in an Objective-C
@@ -5021,7 +5035,6 @@ enum CXCursorKind clang_codeCompleteGetContainerKind(
 CINDEX_LINKAGE
 CXString clang_codeCompleteGetContainerUSR(CXCodeCompleteResults *Results);
 
-
 /**
  * \brief Returns the currently-entered selector for an Objective-C message
  * send, formatted like "initWithFoo:bar:". Only guaranteed to return a
@@ -5040,7 +5053,6 @@ CXString clang_codeCompleteGetObjCSelector(CXCodeCompleteResults *Results);
  * @}
  */
 
-
 /**
  * \defgroup CINDEX_MISC Miscellaneous utility functions
  *
@@ -5052,7 +5064,6 @@ CXString clang_codeCompleteGetObjCSelector(CXCodeCompleteResults *Results);
  *        intended to be parsed (the format is not guaranteed to be stable).
  */
 CINDEX_LINKAGE CXString clang_getClangVersion(void);
-
 
 /**
  * \brief Enable/disable crash recovery.
@@ -5840,7 +5851,6 @@ CINDEX_LINKAGE unsigned clang_Type_visitFields(CXType T,
                                                CXFieldVisitor visitor,
                                                CXClientData client_data);
 
-
 /**
  * @}
  */
@@ -5853,4 +5863,3 @@ CINDEX_LINKAGE unsigned clang_Type_visitFields(CXType T,
 }
 #endif
 #endif
-

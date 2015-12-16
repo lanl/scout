@@ -2356,8 +2356,8 @@ private:
 
   void DiagnoseUnexpectedNamespace(NamedDecl *Context);
 
-  Decl *ParseNamespace(unsigned Context, SourceLocation &DeclEnd,
-                       SourceLocation InlineLoc = SourceLocation());
+  DeclGroupPtrTy ParseNamespace(unsigned Context, SourceLocation &DeclEnd,
+                                SourceLocation InlineLoc = SourceLocation());
   void ParseInnerNamespace(std::vector<SourceLocation>& IdentLoc,
                            std::vector<IdentifierInfo*>& Ident,
                            std::vector<SourceLocation>& NamespaceLoc,

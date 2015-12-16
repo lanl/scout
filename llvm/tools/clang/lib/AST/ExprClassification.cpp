@@ -136,6 +136,9 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::ObjCIvarRefExprClass:
   case Expr::FunctionParmPackExprClass:
   case Expr::MSPropertyRefExprClass:
+  case Expr::MSPropertySubscriptExprClass:
+  case Expr::OMPArraySectionExprClass:
+    return Cl::CL_LValue;
 // +===== Scout =======================
   case Expr::QueryExprClass:
       return Cl::CL_LValue;
@@ -144,8 +147,6 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::StencilShiftExprClass:
        return Cl::CL_LValue;
 // ====================================
-  case Expr::OMPArraySectionExprClass:
-    return Cl::CL_LValue;
 
     // C99 6.5.2.5p5 says that compound literals are lvalues.
     // In C++, they're prvalue temporaries.

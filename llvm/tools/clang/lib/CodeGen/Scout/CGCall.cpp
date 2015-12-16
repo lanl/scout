@@ -83,15 +83,12 @@ CodeGenTypes::arrangeStencilFunctionDeclaration(const FunctionDecl *FD) {
 
 }
 
+static const CGFunctionInfo &
+arrangeLLVMStencilFunctionInfo(CodeGenTypes &CGT, bool instanceMethod,
+                        SmallVectorImpl<CanQualType> &prefix,
+                        CanQual<FunctionProtoType> FTP,
+                        const FunctionDecl *FD) {
 
-// based on  &arrangeLLVMFunctionInfo(CodeGenTypes &CGT, bool IsInstanceMethod,
-// SmallVectorImpl<CanQualType> &prefix,CanQual<FunctionProtoType> FTP,
-// FunctionType::ExtInfo extInfo)
-static const CGFunctionInfo &arrangeLLVMStencilFunctionInfo(CodeGenTypes &CGT,
-                                                     bool IsInstanceMethod,
-                                       SmallVectorImpl<CanQualType> &prefix,
-                                             CanQual<FunctionProtoType> FTP,
-                                              FunctionType::ExtInfo extInfo) {
   RequiredArgs required = RequiredArgs::forPrototypePlus(FTP, prefix.size());
 
   //stencil args (loopbounds + induction vars)
@@ -103,23 +100,17 @@ static const CGFunctionInfo &arrangeLLVMStencilFunctionInfo(CodeGenTypes &CGT,
   for (unsigned i = 0, e = FTP->getNumParams(); i != e; ++i)
     prefix.push_back(FTP->getParamType(i));
   CanQualType resultType = FTP->getReturnType().getUnqualifiedType();
-  return CGT.arrangeLLVMFunctionInfo(resultType, IsInstanceMethod, false, prefix,
-                                     extInfo, required);
+  return CGT.arrangeLLVMFunctionInfo(resultType, instanceMethod,
+                                     /*chainCall=*/false, prefix,
+                                     FTP->getExtInfo(), required);
 }
 
-// based on &arrangeFreeFunctionType(CodeGenTypes &CGT,
-//SmallVectorImpl<CanQualType> &prefix,  CanQual<FunctionProtoType> FTP)
-static const CGFunctionInfo &arrangeStencilFunctionType(CodeGenTypes &CGT,
-                                      SmallVectorImpl<CanQualType> &prefix,
-                                            CanQual<FunctionProtoType> FTP) {
-  return arrangeLLVMStencilFunctionInfo(CGT, false, prefix, FTP, FTP->getExtInfo());
-}
-
-// based on CodeGenTypes::arrangeFreeFunctionType(CanQual<FunctionProtoType> FTP)
 const CGFunctionInfo &
-CodeGenTypes::arrangeStencilFunctionType(CanQual<FunctionProtoType> FTP) {
+CodeGenTypes::arrangeStencilFunctionType(CanQual<FunctionProtoType> FTP,
+                                      const FunctionDecl *FD) {
   SmallVector<CanQualType, 16> argTypes;
-  return ::arrangeStencilFunctionType(*this, argTypes, FTP);
+  return ::arrangeLLVMStencilFunctionInfo(*this, /*instanceMethod=*/false, argTypes,
+                                   FTP, FD);
 }
 
 

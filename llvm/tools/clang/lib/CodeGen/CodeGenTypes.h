@@ -212,7 +212,7 @@ class CodeGenTypes {
   // +==== Scout =============================================================+
   /// ConvertType - Convert type T into a llvm::Type.
   //llvm::Type *ConvertType(QualType T);
-  llvm::Type *ConvertType(QualType T, bool issStencil=false);
+  llvm::Type *ConvertType(QualType T, bool isStencil=false);
   typedef std::vector<MeshFieldDecl*>   FieldDeclVector;
   typedef SmallVector<llvm::Metadata*, 16> MetadataVector;
   void AddMeshFieldMetadata(const char *locationName,
@@ -224,6 +224,14 @@ class CodeGenTypes {
   llvm::Type *ConvertScoutFrameType(QualType T);
   llvm::Type *ConvertScoutFrameVarType(QualType T);
   // +========================================================================+
+
+  /// \brief Converts the GlobalDecl into an llvm::Type. This should be used
+  /// when we know the target of the function we want to convert.  This is
+  /// because some functions (explicitly, those with pass_object_size
+  /// parameters) may not have the same signature as their type portrays, and
+  /// can only be called directly.
+  llvm::Type *ConvertFunctionType(QualType FT,
+                                  const FunctionDecl *FD = nullptr, bool isStencil=false);
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
   /// ConvertType in that it is used to convert to the memory representation for
@@ -326,15 +334,17 @@ class CodeGenTypes {
   const CGFunctionInfo &arrangeMSMemberPointerThunk(const CXXMethodDecl *MD);
   const CGFunctionInfo &arrangeMSCtorClosure(const CXXConstructorDecl *CD,
                                                  CXXCtorType CT);
-
-  const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionProtoType> Ty);
+  const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionProtoType> Ty,
+                                                const FunctionDecl *FD);
   const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionNoProtoType> Ty);
   // +===== Scout ==============================================================+
-  const CGFunctionInfo &arrangeStencilFunctionType(CanQual<FunctionProtoType> Ty);
+  const CGFunctionInfo &arrangeStencilFunctionType(CanQual<FunctionProtoType> Ty,
+                                                const FunctionDecl *FD);
   // +==========================================================================+
 
   const CGFunctionInfo &arrangeCXXMethodType(const CXXRecordDecl *RD,
-                                             const FunctionProtoType *FTP);
+                                             const FunctionProtoType *FTP,
+                                             const CXXMethodDecl *MD);
 
   /// "Arrange" the LLVM information for a call or type with the given
   /// signature.  This is largely an internal method; other clients
