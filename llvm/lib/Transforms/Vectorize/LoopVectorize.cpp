@@ -4294,12 +4294,12 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
           continue;
         }
 
-        if (RecurrenceDescriptor::isReductionPHI(Phi, TheLoop,
-                                                 Reductions[Phi])) {
-          if (Reductions[Phi].hasUnsafeAlgebra())
-            Requirements->addUnsafeAlgebraInst(
-                Reductions[Phi].getUnsafeAlgebraInst());
-          AllowedExit.insert(Reductions[Phi].getLoopExitInstr());
+        RecurrenceDescriptor RedDes;
+        if (RecurrenceDescriptor::isReductionPHI(Phi, TheLoop, RedDes)) {
+          if (RedDes.hasUnsafeAlgebra())
+            Requirements->addUnsafeAlgebraInst(RedDes.getUnsafeAlgebraInst());
+          AllowedExit.insert(RedDes.getLoopExitInstr());
+          Reductions[Phi] = RedDes;
           continue;
         }
 
@@ -4682,7 +4682,7 @@ void InterleavedAccessInfo::analyzeInterleaving(
       if (!DistToA)
         continue;
 
-      int DistanceToA = DistToA->getValue()->getValue().getSExtValue();
+      int DistanceToA = DistToA->getAPInt().getSExtValue();
 
       // Skip if the distance is not multiple of size as they are not in the
       // same group.
@@ -5304,7 +5304,7 @@ static bool isLikelyComplexAddressComputation(Value *Ptr,
   if (!C)
     return true;
 
-  const APInt &APStepVal = C->getValue()->getValue();
+  const APInt &APStepVal = C->getAPInt();
 
   // Huge step value - give up.
   if (APStepVal.getBitWidth() > 64)

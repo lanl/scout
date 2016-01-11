@@ -20,7 +20,6 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
-#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -46,8 +45,9 @@ WebAssemblyTargetMachine::WebAssemblyTargetMachine(
     const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
     const TargetOptions &Options, Reloc::Model RM, CodeModel::Model CM,
     CodeGenOpt::Level OL)
-    : LLVMTargetMachine(T, TT.isArch64Bit() ? "e-p:64:64-i64:64-n32:64-S128"
-                                            : "e-p:32:32-i64:64-n32:64-S128",
+    : LLVMTargetMachine(T,
+                        TT.isArch64Bit() ? "e-m:e-p:64:64-i64:64-n32:64-S128"
+                                         : "e-m:e-p:32:32-i64:64-n32:64-S128",
                         TT, CPU, FS, Options, RM, CM, OL),
       TLOF(make_unique<WebAssemblyTargetObjectFile>()) {
   // WebAssembly type-checks expressions, but a noreturn function with a return
@@ -166,9 +166,6 @@ void WebAssemblyPassConfig::addPreRegAlloc() {
 
   // Prepare store instructions for register stackifying.
   addPass(createWebAssemblyStoreResults());
-
-  // Mark registers as representing wasm's expression stack.
-  addPass(createWebAssemblyRegStackify());
 }
 
 void WebAssemblyPassConfig::addPostRegAlloc() {
@@ -181,6 +178,9 @@ void WebAssemblyPassConfig::addPostRegAlloc() {
   disablePass(&PrologEpilogCodeInserterID);
   // Fails with: should be run after register allocation.
   disablePass(&MachineCopyPropagationID);
+
+  // Mark registers as representing wasm's expression stack.
+  addPass(createWebAssemblyRegStackify());
 
   // Run the register coloring pass to reduce the total number of registers.
   addPass(createWebAssemblyRegColoring());
@@ -195,7 +195,7 @@ void WebAssemblyPassConfig::addPostRegAlloc() {
 
 void WebAssemblyPassConfig::addPreEmitPass() {
   TargetPassConfig::addPreEmitPass();
-    
+
   // Put the CFG in structured form; insert BLOCK and LOOP markers.
   addPass(createWebAssemblyCFGStackify());
 

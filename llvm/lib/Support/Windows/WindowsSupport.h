@@ -30,6 +30,9 @@
 #define _WIN32_WINNT 0x0601
 #define _WIN32_IE    0x0800 // MinGW at it again. FIXME: verify if still needed.
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -43,6 +46,19 @@
 #include <cassert>
 #include <string>
 #include <vector>
+
+/// Determines if the program is running on Windows 8 or newer. This
+/// reimplements the helpers in the Windows 8.1 SDK, which are intended to
+/// supercede raw calls to GetVersionEx, because old Windows SDKs, Cygwin, and
+/// MinGW don't have VersionSupport.h yet.
+inline bool IsWindows8OrGreater() {
+  OSVERSIONINFO osvi = {};
+  osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+  if (!::GetVersionEx(&osvi))
+    return false;
+  return (osvi.dwMajorVersion > 6 ||
+          (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion >= 2));
+}
 
 inline bool MakeErrMsg(std::string* ErrMsg, const std::string& prefix) {
   if (!ErrMsg)

@@ -2,7 +2,7 @@
 
 ; Test various types and operators that need to be legalized.
 
-target datalayout = "e-p:32:32-i64:64-n32:64-S128"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 target triple = "wasm32-unknown-unknown"
 
 ; CHECK-LABEL: shl_i3:
@@ -50,4 +50,13 @@ define float @fpconv_f64_f32(double *%p) {
   %v = load double, double* %p
   %e = fptrunc double %v to float
   ret float %e
+}
+
+; Check that big shifts work. This generates a big pile of code from the
+; legalizer; the main thing here is that we don't abort.
+
+; CHECK-LABEL: bigshift:
+define i1024 @bigshift(i1024 %a, i1024 %b) {
+    %c = shl i1024 %a, %b
+    ret i1024 %c
 }
