@@ -42,7 +42,11 @@ public:
   }
 
   bool runOnLoop(Loop *L, LPPassManager &) override {
-    P.run(*L);
+    auto BBI = find_if(L->blocks().begin(), L->blocks().end(),
+                       [](BasicBlock *BB) { return BB; });
+    if (BBI != L->blocks().end() &&
+        isFunctionInPrintList((*BBI)->getParent()->getName()))
+      P.run(*L);
     return false;
   }
 };
@@ -60,12 +64,6 @@ LPPassManager::LPPassManager()
   : FunctionPass(ID), PMDataManager() {
   LI = nullptr;
   CurrentLoop = nullptr;
-}
-
-/// Delete loop from the loop queue and loop hierarchy (LoopInfo).
-void LPPassManager::deleteLoopFromQueue(Loop *L) {
-  assert(CurrentLoop == L && "deleting a loop that is not being operated on");
-  LI->updateUnloop(L);
 }
 
 // Inset loop into loop nest (LoopInfo) and loop queue (LQ).
@@ -180,8 +178,9 @@ bool LPPassManager::runOnFunction(Function &F) {
 
   // Walk Loops
   while (!LQ.empty()) {
-
+    bool LoopWasDeleted = false;
     CurrentLoop = LQ.back();
+
     // Run all passes on the current Loop.
     for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
       LoopPass *P = getContainedPass(Index);
@@ -198,15 +197,15 @@ bool LPPassManager::runOnFunction(Function &F) {
 
         Changed |= P->runOnLoop(CurrentLoop, *this);
       }
+      LoopWasDeleted = CurrentLoop->isInvalid();
 
       if (Changed)
         dumpPassInfo(P, MODIFICATION_MSG, ON_LOOP_MSG,
-                     CurrentLoop->isUnloop()
-                         ? "<deleted>"
-                         : CurrentLoop->getHeader()->getName());
+                     LoopWasDeleted ? "<deleted>"
+                                    : CurrentLoop->getHeader()->getName());
       dumpPreservedSet(P);
 
-      if (CurrentLoop->isUnloop()) {
+      if (LoopWasDeleted) {
         // Notify passes that the loop is being deleted.
         deleteSimpleAnalysisLoop(CurrentLoop);
       } else {
@@ -228,12 +227,11 @@ bool LPPassManager::runOnFunction(Function &F) {
 
       removeNotPreservedAnalysis(P);
       recordAvailableAnalysis(P);
-      removeDeadPasses(P, CurrentLoop->isUnloop()
-                              ? "<deleted>"
-                              : CurrentLoop->getHeader()->getName(),
+      removeDeadPasses(P, LoopWasDeleted ? "<deleted>"
+                                         : CurrentLoop->getHeader()->getName(),
                        ON_LOOP_MSG);
 
-      if (CurrentLoop->isUnloop())
+      if (LoopWasDeleted)
         // Do not run other passes on this loop.
         break;
     }
@@ -241,12 +239,11 @@ bool LPPassManager::runOnFunction(Function &F) {
     // If the loop was deleted, release all the loop passes. This frees up
     // some memory, and avoids trouble with the pass manager trying to call
     // verifyAnalysis on them.
-    if (CurrentLoop->isUnloop()) {
+    if (LoopWasDeleted) {
       for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
         Pass *P = getContainedPass(Index);
         freePass(P, "<deleted>", ON_LOOP_MSG);
       }
-      delete CurrentLoop;
     }
 
     // Pop the loop from queue after running all passes.

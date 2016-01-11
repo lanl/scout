@@ -70,11 +70,13 @@ private:
   bool FastFMAF32;
   bool CaymanISA;
   bool FlatAddressSpace;
+  bool FlatForGlobal;
   bool EnableIRStructurizer;
   bool EnablePromoteAlloca;
   bool EnableIfCvt;
   bool EnableLoadStoreOpt;
   bool EnableUnsafeDSOffsetFolding;
+  bool EnableXNACK;
   unsigned WavefrontSize;
   bool CFALUBug;
   int LocalMemorySize;
@@ -157,6 +159,10 @@ public:
 
   bool hasFlatAddressSpace() const {
     return FlatAddressSpace;
+  }
+
+  bool useFlatForGlobal() const {
+    return FlatForGlobal;
   }
 
   bool hasBFE() const {
@@ -284,6 +290,10 @@ public:
     return TargetTriple.getOS() == Triple::AMDHSA;
   }
   bool isVGPRSpillingEnabled(const SIMachineFunctionInfo *MFI) const;
+
+  bool isXNACKEnabled() const {
+    return EnableXNACK;
+  }
 
   unsigned getMaxWavesPerCU() const {
     if (getGeneration() >= AMDGPUSubtarget::SOUTHERN_ISLANDS)

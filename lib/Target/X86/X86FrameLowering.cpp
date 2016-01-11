@@ -426,23 +426,6 @@ X86FrameLowering::emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
   }
 }
 
-/// usesTheStack - This function checks if any of the users of EFLAGS
-/// copies the EFLAGS. We know that the code that lowers COPY of EFLAGS has
-/// to use the stack, and if we don't adjust the stack we clobber the first
-/// frame index.
-/// See X86InstrInfo::copyPhysReg.
-static bool usesTheStack(const MachineFunction &MF) {
-  const MachineRegisterInfo &MRI = MF.getRegInfo();
-
-  for (MachineRegisterInfo::reg_instr_iterator
-       ri = MRI.reg_instr_begin(X86::EFLAGS), re = MRI.reg_instr_end();
-       ri != re; ++ri)
-    if (ri->isCopy())
-      return true;
-
-  return false;
-}
-
 MachineInstr *X86FrameLowering::emitStackProbe(MachineFunction &MF,
                                                MachineBasicBlock &MBB,
                                                MachineBasicBlock::iterator MBBI,
@@ -927,8 +910,7 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
   unsigned FramePtr = TRI->getFrameRegister(MF);
   const unsigned MachineFramePtr =
       STI.isTarget64BitILP32()
-          ? getX86SubSuperRegister(FramePtr, MVT::i64, false)
-          : FramePtr;
+          ? getX86SubSuperRegister(FramePtr, 64) : FramePtr;
   unsigned BasePtr = TRI->getBaseRegister();
   
   // Debug location must be unknown since the first debug location is used
@@ -961,11 +943,11 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
   // push and pop from the stack.
   if (Is64Bit && !Fn->hasFnAttribute(Attribute::NoRedZone) &&
       !TRI->needsStackRealignment(MF) &&
-      !MFI->hasVarSizedObjects() && // No dynamic alloca.
-      !MFI->adjustsStack() &&       // No calls.
-      !IsWin64CC &&                 // Win64 has no Red Zone
-      !usesTheStack(MF) &&          // Don't push and pop.
-      !MF.shouldSplitStack()) {     // Regular stack
+      !MFI->hasVarSizedObjects() &&    // No dynamic alloca.
+      !MFI->adjustsStack() &&          // No calls.
+      !IsWin64CC &&                    // Win64 has no Red Zone
+      !MFI->hasOpaqueSPAdjustment() && // Don't push and pop.
+      !MF.shouldSplitStack()) {        // Regular stack
     uint64_t MinSize = X86FI->getCalleeSavedFrameSize();
     if (HasFP) MinSize += SlotSize;
     StackSize = std::max(MinSize, StackSize > 128 ? StackSize - 128 : 0);
@@ -1466,8 +1448,7 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   const bool Is64BitILP32 = STI.isTarget64BitILP32();
   unsigned FramePtr = TRI->getFrameRegister(MF);
   unsigned MachineFramePtr =
-      Is64BitILP32 ? getX86SubSuperRegister(FramePtr, MVT::i64, false)
-                   : FramePtr;
+      Is64BitILP32 ? getX86SubSuperRegister(FramePtr, 64) : FramePtr;
 
   bool IsWin64Prologue = MF.getTarget().getMCAsmInfo()->usesWindowsCFI();
   bool NeedsWinCFI =

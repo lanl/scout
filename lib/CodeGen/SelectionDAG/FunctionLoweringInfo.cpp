@@ -165,7 +165,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
           MF->getFrameInfo()->setHasVAStart(true);
       }
 
-      // If we have a musttail call in a variadic funciton, we need to ensure we
+      // If we have a musttail call in a variadic function, we need to ensure we
       // forward implicit register parameters.
       if (const auto *CI = dyn_cast<CallInst>(I)) {
         if (CI->isMustTailCall() && Fn->isVarArg())
@@ -296,8 +296,6 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
     calculateSEHStateNumbers(&fn, EHInfo);
   else if (Personality == EHPersonality::CoreCLR)
     calculateClrEHStateNumbers(&fn, EHInfo);
-
-  calculateCatchReturnSuccessorColors(&fn, EHInfo);
 
   // Map all BB references in the WinEH data to MBBs.
   for (WinEHTryBlockMapEntry &TBME : EHInfo.TryBlockMap) {

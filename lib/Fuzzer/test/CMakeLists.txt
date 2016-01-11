@@ -17,7 +17,6 @@ set(Tests
   CounterTest
   FourIndependentBranchesTest
   FullCoverageSetTest
-  InfiniteTest
   MemcmpTest
   NullDerefTest
   SimpleCmpTest
@@ -27,6 +26,7 @@ set(Tests
   StrcmpTest
   StrncmpTest
   SwitchTest
+  ThreadedTest
   TimeoutTest
   )
 

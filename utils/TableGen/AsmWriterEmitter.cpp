@@ -109,9 +109,9 @@ static void EmitInstructions(std::vector<AsmWriterInst> &Insts,
 
   O << "  case " << FirstInst.CGI->Namespace << "::"
     << FirstInst.CGI->TheDef->getName() << ":\n";
-  for (unsigned i = 0, e = SimilarInsts.size(); i != e; ++i)
-    O << "  case " << SimilarInsts[i].CGI->Namespace << "::"
-      << SimilarInsts[i].CGI->TheDef->getName() << ":\n";
+  for (const AsmWriterInst &AWI : SimilarInsts)
+    O << "  case " << AWI.CGI->Namespace << "::"
+      << AWI.CGI->TheDef->getName() << ":\n";
   for (unsigned i = 0, e = FirstInst.Operands.size(); i != e; ++i) {
     if (i != DifferingOperand) {
       // If the operand is the same for all instructions, just print it.
@@ -125,8 +125,7 @@ static void EmitInstructions(std::vector<AsmWriterInst> &Insts,
                                           FirstInst.CGI->TheDef->getName(),
                                           FirstInst.Operands[i]));
 
-      for (unsigned si = 0, e = SimilarInsts.size(); si != e; ++si) {
-        AsmWriterInst &AWI = SimilarInsts[si];
+      for (const AsmWriterInst &AWI : SimilarInsts) {
         OpsToPrint.push_back(std::make_pair(AWI.CGI->Namespace+"::"+
                                             AWI.CGI->TheDef->getName(),
                                             AWI.Operands[i]));
@@ -159,11 +158,10 @@ FindUniqueOperandCommands(std::vector<std::string> &UniqueOperandCommands,
     if (!Inst)
       continue; // PHI, INLINEASM, CFI_INSTRUCTION, etc.
 
-    std::string Command;
     if (Inst->Operands.empty())
       continue;   // Instruction already done.
 
-    Command = "    " + Inst->Operands[0].getCode() + "\n";
+    std::string Command = "    " + Inst->Operands[0].getCode() + "\n";
 
     // Check to see if we already have 'Command' in UniqueOperandCommands.
     // If not, add it.
@@ -178,7 +176,7 @@ FindUniqueOperandCommands(std::vector<std::string> &UniqueOperandCommands,
       }
     if (!FoundIt) {
       InstIdxs[i] = UniqueOperandCommands.size();
-      UniqueOperandCommands.push_back(Command);
+      UniqueOperandCommands.push_back(std::move(Command));
       InstrsForCase.push_back(Inst->CGI->TheDef->getName());
 
       // This command matches one operand so far.
@@ -299,8 +297,8 @@ void AsmWriterEmitter::EmitPrintInstruction(raw_ostream &O) {
 
   // Add all strings to the string table upfront so it can generate an optimized
   // representation.
-  for (unsigned i = 0, e = NumberedInstructions->size(); i != e; ++i) {
-    AsmWriterInst *AWI = CGIAWIMap[NumberedInstructions->at(i)];
+  for (const CodeGenInstruction *Inst : *NumberedInstructions) {
+    AsmWriterInst *AWI = CGIAWIMap[Inst];
     if (AWI &&
         AWI->Operands[0].OperandType ==
                  AsmWriterOperand::isLiteralTextOperand &&
@@ -314,8 +312,8 @@ void AsmWriterEmitter::EmitPrintInstruction(raw_ostream &O) {
   StringTable.layout();
 
   unsigned MaxStringIdx = 0;
-  for (unsigned i = 0, e = NumberedInstructions->size(); i != e; ++i) {
-    AsmWriterInst *AWI = CGIAWIMap[NumberedInstructions->at(i)];
+  for (const CodeGenInstruction *Inst : *NumberedInstructions) {
+    AsmWriterInst *AWI = CGIAWIMap[Inst];
     unsigned Idx;
     if (!AWI) {
       // Something not handled by the asmwriter printer.
@@ -392,51 +390,49 @@ void AsmWriterEmitter::EmitPrintInstruction(raw_ostream &O) {
     TableDrivenOperandPrinters.push_back(std::move(UniqueOperandCommands));
   }
 
-
-  // We always emit at least one 32-bit table. A second table is emitted if
-  // more bits are needed.
-  O<<"  static const uint32_t OpInfo[] = {\n";
-  for (unsigned i = 0, e = NumberedInstructions->size(); i != e; ++i) {
-    O << "    " << (OpcodeInfo[i] & 0xffffffff) << "U,\t// "
-      << NumberedInstructions->at(i)->TheDef->getName() << "\n";
-  }
-  // Add a dummy entry so the array init doesn't end with a comma.
-  O << "    0U\n";
-  O << "  };\n\n";
-
-  if (BitsLeft < 32) {
-    // Add a second OpInfo table only when it is necessary.
-    // Adjust the type of the second table based on the number of bits needed.
-    O << "  static const uint"
-      << ((BitsLeft < 16) ? "32" : (BitsLeft < 24) ? "16" : "8")
-      << "_t OpInfo2[] = {\n";
-    for (unsigned i = 0, e = NumberedInstructions->size(); i != e; ++i) {
-      O << "    " << (OpcodeInfo[i] >> 32) << "U,\t// "
-        << NumberedInstructions->at(i)->TheDef->getName() << "\n";
-    }
-    // Add a dummy entry so the array init doesn't end with a comma.
-    O << "    0U\n";
-    O << "  };\n\n";
-  }
-
-  // Emit the string itself.
+  // Emit the string table itself.
   O << "  static const char AsmStrs[] = {\n";
   StringTable.emit(O, printChar);
   O << "  };\n\n";
 
+  // Emit the lookup tables in pieces to minimize wasted bytes.
+  unsigned BytesNeeded = ((64 - BitsLeft) + 7) / 8;
+  unsigned Table = 0, Shift = 0;
+  SmallString<128> BitsString;
+  raw_svector_ostream BitsOS(BitsString);
+  // If the total bits is more than 32-bits we need to use a 64-bit type.
+  BitsOS << "  uint" << ((BitsLeft < 32) ? 64 : 32) << "_t Bits = 0;\n";
+  while (BytesNeeded != 0) {
+    // Figure out how big this table section needs to be, but no bigger than 4.
+    unsigned TableSize = std::min(1 << Log2_32(BytesNeeded), 4);
+    BytesNeeded -= TableSize;
+    TableSize *= 8; // Convert to bits;
+    uint64_t Mask = (1ULL << TableSize) - 1;
+    O << "  static const uint" << TableSize << "_t OpInfo" << Table
+      << "[] = {\n";
+    for (unsigned i = 0, e = NumberedInstructions->size(); i != e; ++i) {
+      O << "    " << ((OpcodeInfo[i] >> Shift) & Mask) << "U,\t// "
+        << NumberedInstructions->at(i)->TheDef->getName() << "\n";
+    }
+    O << "  };\n\n";
+    // Emit string to combine the individual table lookups.
+    BitsOS << "  Bits |= ";
+    // If the total bits is more than 32-bits we need to use a 64-bit type.
+    if (BitsLeft < 32)
+      BitsOS << "(uint64_t)";
+    BitsOS << "OpInfo" << Table << "[MI->getOpcode()] << " << Shift << ";\n";
+    // Prepare the shift for the next iteration and increment the table count.
+    Shift += TableSize;
+    ++Table;
+  }
+
+  // Emit the initial tab character.
   O << "  O << \"\\t\";\n\n";
 
   O << "  // Emit the opcode for the instruction.\n";
-  if (BitsLeft < 32) {
-    // If we have two tables then we need to perform two lookups and combine
-    // the results into a single 64-bit value.
-    O << "  uint64_t Bits1 = OpInfo[MI->getOpcode()];\n"
-      << "  uint64_t Bits2 = OpInfo2[MI->getOpcode()];\n"
-      << "  uint64_t Bits = (Bits2 << 32) | Bits1;\n";
-  } else {
-    // If only one table is used we just need to perform a single lookup.
-    O << "  uint32_t Bits = OpInfo[MI->getOpcode()];\n";
-  }
+  O << BitsString;
+
+  // Emit the starting string.
   O << "  assert(Bits != 0 && \"Cannot print this instruction.\");\n"
     << "  O << AsmStrs+(Bits & " << (1 << AsmStrBits)-1 << ")-1;\n\n";
 
@@ -473,9 +469,9 @@ void AsmWriterEmitter::EmitPrintInstruction(raw_ostream &O) {
         << "  default: llvm_unreachable(\"Invalid command number.\");\n";
 
       // Print out all the cases.
-      for (unsigned i = 0, e = Commands.size(); i != e; ++i) {
-        O << "  case " << i << ":\n";
-        O << Commands[i];
+      for (unsigned j = 0, e = Commands.size(); j != e; ++j) {
+        O << "  case " << j << ":\n";
+        O << Commands[j];
         O << "    break;\n";
       }
       O << "  }\n\n";
@@ -603,16 +599,16 @@ void AsmWriterEmitter::EmitGetRegisterName(raw_ostream &O) {
     << "\n";
 
   if (hasAltNames) {
-    for (unsigned i = 0, e = AltNameIndices.size(); i < e; ++i)
-      emitRegisterNameString(O, AltNameIndices[i]->getName(), Registers);
+    for (const Record *R : AltNameIndices)
+      emitRegisterNameString(O, R->getName(), Registers);
   } else
     emitRegisterNameString(O, "", Registers);
 
   if (hasAltNames) {
     O << "  switch(AltIdx) {\n"
       << "  default: llvm_unreachable(\"Invalid register alt name index!\");\n";
-    for (unsigned i = 0, e = AltNameIndices.size(); i < e; ++i) {
-      std::string AltName(AltNameIndices[i]->getName());
+    for (const Record *R : AltNameIndices) {
+      std::string AltName(R->getName());
       std::string Prefix = !Namespace.empty() ? Namespace + "::" : "";
       O << "  case " << Prefix << AltName << ":\n"
         << "    assert(*(AsmStrs" << AltName << "+RegAsmOffset"
@@ -799,9 +795,7 @@ void AsmWriterEmitter::EmitPrintAliasInstruction(raw_ostream &O) {
   typedef std::set<std::pair<CodeGenInstAlias, int>, AliasPriorityComparator>
       AliasWithPriority;
   std::map<std::string, AliasWithPriority> AliasMap;
-  for (std::vector<Record*>::iterator
-         I = AllInstAliases.begin(), E = AllInstAliases.end(); I != E; ++I) {
-    const Record *R = *I;
+  for (Record *R : AllInstAliases) {
     int Priority = R->getValueAsInt("EmitPriority");
     if (Priority < 1)
       continue; // Aliases with priority 0 are never emitted.
@@ -809,7 +803,7 @@ void AsmWriterEmitter::EmitPrintAliasInstruction(raw_ostream &O) {
     const DagInit *DI = R->getValueAsDag("ResultInst");
     const DefInit *Op = cast<DefInit>(DI->getOperator());
     AliasMap[getQualifiedName(Op->getDef())].insert(
-        std::make_pair(CodeGenInstAlias(*I, Variant, Target), Priority));
+        std::make_pair(CodeGenInstAlias(R, Variant, Target), Priority));
   }
 
   // A map of which conditions need to be met for each instruction operand
@@ -977,9 +971,7 @@ void AsmWriterEmitter::EmitPrintAliasInstruction(raw_ostream &O) {
 
     CasesO.indent(2) << "case " << Entry.first << ":\n";
 
-    for (std::vector<IAPrinter*>::iterator
-           II = UniqueIAPs.begin(), IE = UniqueIAPs.end(); II != IE; ++II) {
-      IAPrinter *IAP = *II;
+    for (IAPrinter *IAP : UniqueIAPs) {
       CasesO.indent(4);
       IAP->print(CasesO);
       CasesO << '\n';
@@ -1109,8 +1101,8 @@ AsmWriterEmitter::AsmWriterEmitter(RecordKeeper &R) : Records(R), Target(R) {
   // Compute the CodeGenInstruction -> AsmWriterInst mapping.  Note that not
   // all machine instructions are necessarily being printed, so there may be
   // target instructions not in this map.
-  for (unsigned i = 0, e = Instructions.size(); i != e; ++i)
-    CGIAWIMap.insert(std::make_pair(Instructions[i].CGI, &Instructions[i]));
+  for (AsmWriterInst &AWI : Instructions)
+    CGIAWIMap.insert(std::make_pair(AWI.CGI, &AWI));
 }
 
 void AsmWriterEmitter::run(raw_ostream &O) {

@@ -23,6 +23,7 @@
 #include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/LazyValueInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
@@ -1071,8 +1072,13 @@ bool llvm::ConvertDebugDeclareToDebugValue(DbgDeclareInst *DDI,
   if (LdStHasDebugValue(DIVar, LI))
     return true;
 
-  Builder.insertDbgValueIntrinsic(LI->getOperand(0), 0, DIVar, DIExpr,
-                                  DDI->getDebugLoc(), LI);
+  // We are now tracking the loaded value instead of the address. In the
+  // future if multi-location support is added to the IR, it might be
+  // preferable to keep tracking both the loaded value and the original
+  // address in case the alloca can not be elided.
+  Instruction *DbgValue = Builder.insertDbgValueIntrinsic(
+      LI, 0, DIVar, DIExpr, DDI->getDebugLoc(), (Instruction *)nullptr);
+  DbgValue->insertAfter(LI);
   return true;
 }
 
@@ -1114,9 +1120,13 @@ bool llvm::LowerDbgDeclare(Function &F) {
           // This is a call by-value or some other instruction that
           // takes a pointer to the variable. Insert a *value*
           // intrinsic that describes the alloca.
+          SmallVector<uint64_t, 1> NewDIExpr;
+          auto *DIExpr = DDI->getExpression();
+          NewDIExpr.push_back(dwarf::DW_OP_deref);
+          NewDIExpr.append(DIExpr->elements_begin(), DIExpr->elements_end());
           DIB.insertDbgValueIntrinsic(AI, 0, DDI->getVariable(),
-                                      DDI->getExpression(), DDI->getDebugLoc(),
-                                      CI);
+                                      DIB.createExpression(NewDIExpr),
+                                      DDI->getDebugLoc(), CI);
         }
       DDI->eraseFromParent();
     }
@@ -1296,8 +1306,9 @@ static bool markAliveBlocks(Function &F,
       }
     }
 
-    // Turn invokes that call 'nounwind' functions into ordinary calls.
-    if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
+    TerminatorInst *Terminator = BB->getTerminator();
+    if (auto *II = dyn_cast<InvokeInst>(Terminator)) {
+      // Turn invokes that call 'nounwind' functions into ordinary calls.
       Value *Callee = II->getCalledValue();
       if (isa<ConstantPointerNull>(Callee) || isa<UndefValue>(Callee)) {
         changeToUnreachable(II, true);
@@ -1311,6 +1322,44 @@ static bool markAliveBlocks(Function &F,
         } else
           changeToCall(II);
         Changed = true;
+      }
+    } else if (auto *CatchSwitch = dyn_cast<CatchSwitchInst>(Terminator)) {
+      // Remove catchpads which cannot be reached.
+      struct CatchPadDenseMapInfo {
+        static CatchPadInst *getEmptyKey() {
+          return DenseMapInfo<CatchPadInst *>::getEmptyKey();
+        }
+        static CatchPadInst *getTombstoneKey() {
+          return DenseMapInfo<CatchPadInst *>::getTombstoneKey();
+        }
+        static unsigned getHashValue(CatchPadInst *CatchPad) {
+          return static_cast<unsigned>(hash_combine_range(
+              CatchPad->value_op_begin(), CatchPad->value_op_end()));
+        }
+        static bool isEqual(CatchPadInst *LHS, CatchPadInst *RHS) {
+          if (LHS == getEmptyKey() || LHS == getTombstoneKey() ||
+              RHS == getEmptyKey() || RHS == getTombstoneKey())
+            return LHS == RHS;
+          return LHS->isIdenticalTo(RHS);
+        }
+      };
+
+      // Set of unique CatchPads.
+      SmallDenseMap<CatchPadInst *, detail::DenseSetEmpty, 4,
+                    CatchPadDenseMapInfo, detail::DenseSetPair<CatchPadInst *>>
+          HandlerSet;
+      detail::DenseSetEmpty Empty;
+      for (CatchSwitchInst::handler_iterator I = CatchSwitch->handler_begin(),
+                                             E = CatchSwitch->handler_end();
+           I != E; ++I) {
+        BasicBlock *HandlerBB = *I;
+        auto *CatchPad = cast<CatchPadInst>(HandlerBB->getFirstNonPHI());
+        if (!HandlerSet.insert({CatchPad, Empty}).second) {
+          CatchSwitch->removeHandler(I);
+          --I;
+          --E;
+          Changed = true;
+        }
       }
     }
 
@@ -1359,7 +1408,7 @@ void llvm::removeUnwindEdge(BasicBlock *BB) {
 /// removeUnreachableBlocksFromFn - Remove blocks that are not reachable, even
 /// if they are in a dead cycle.  Return true if a change was made, false
 /// otherwise.
-bool llvm::removeUnreachableBlocks(Function &F) {
+bool llvm::removeUnreachableBlocks(Function &F, LazyValueInfo *LVI) {
   SmallPtrSet<BasicBlock*, 128> Reachable;
   bool Changed = markAliveBlocks(F, Reachable);
 
@@ -1380,6 +1429,8 @@ bool llvm::removeUnreachableBlocks(Function &F) {
          ++SI)
       if (Reachable.count(*SI))
         (*SI)->removePredecessor(&*BB);
+    if (LVI)
+      LVI->eraseBlock(&*BB);
     BB->dropAllReferences();
   }
 
@@ -1505,8 +1556,8 @@ bool llvm::callsGCLeafFunction(ImmutableCallSite CS) {
     return true;
 
   // Check if the function is specifically marked as a gc leaf function.
-  //
-  // TODO: we should be checking the attributes on the call site as well.
+  if (CS.hasFnAttr("gc-leaf-function"))
+    return true;
   if (const Function *F = CS.getCalledFunction())
     return F->hasFnAttribute("gc-leaf-function");
 

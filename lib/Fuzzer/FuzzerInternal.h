@@ -24,7 +24,6 @@
 #include "FuzzerInterface.h"
 
 namespace fuzzer {
-typedef std::vector<uint8_t> Unit;
 using namespace std::chrono;
 
 std::string FileToString(const std::string &Path);
@@ -89,8 +88,6 @@ class Fuzzer {
     int SyncTimeout = 600;
     int ReportSlowUnits = 10;
     bool OnlyASCII = false;
-    int TBMDepth = 10;
-    int TBMWidth = 10;
     std::string OutputCorpus;
     std::string SyncCommand;
     std::string ArtifactPrefix = "./";
@@ -98,6 +95,7 @@ class Fuzzer {
     bool SaveArtifacts = true;
     bool PrintNEW = true;  // Print a status line when new units are found;
     bool OutputCSV = false;
+    bool PrintNewCovPcs = false;
   };
   Fuzzer(UserSuppliedFuzzer &USF, FuzzingOptions Options);
   void AddToCorpus(const Unit &U) { Corpus.push_back(U); }
@@ -132,7 +130,7 @@ class Fuzzer {
 
  private:
   void AlarmCallback();
-  void MutateAndTestOne(Unit *U);
+  void MutateAndTestOne();
   void ReportNewCoverage(const Unit &U);
   bool RunOne(const Unit &U);
   void RunOneAndUpdateCorpus(Unit &U);
@@ -156,10 +154,8 @@ class Fuzzer {
 
   // Start tracing; forget all previously proposed mutations.
   void StartTraceRecording();
-  // Stop tracing and return the number of proposed mutations.
-  size_t StopTraceRecording();
-  // Apply Idx-th trace-based mutation to U.
-  void ApplyTraceBasedMutation(size_t Idx, Unit *U);
+  // Stop tracing.
+  void StopTraceRecording();
 
   void SetDeathCallback();
   static void StaticDeathCallback();
@@ -189,6 +185,7 @@ class Fuzzer {
   long EpochOfLastReadOfOutputCorpus = 0;
   size_t LastRecordedBlockCoverage = 0;
   size_t LastRecordedCallerCalleeCoverage = 0;
+  size_t LastCoveragePcBufferLen = 0;
 };
 
 class SimpleUserSuppliedFuzzer: public UserSuppliedFuzzer {

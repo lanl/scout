@@ -78,6 +78,8 @@ Here's the short story for getting up and running quickly with LLVM:
 
    The usual build uses `CMake <CMake.html>`_. If you would rather use
    autotools, see `Building LLVM with autotools <BuildingLLVMWithAutotools.html>`_.
+   Although the build is known to work with CMake >= 2.8.8, we recommend CMake
+   >= v3.2, especially if you're generating Ninja build files.
 
    * ``cd where you want to build llvm``
    * ``mkdir build``
@@ -88,7 +90,7 @@ Here's the short story for getting up and running quickly with LLVM:
 
      * ``Unix Makefiles`` --- for generating make-compatible parallel makefiles.
      * ``Ninja`` --- for generating `Ninja <http://martine.github.io/ninja/>`
-        build files.
+        build files. Most llvm developers use Ninja.
      * ``Visual Studio`` --- for generating Visual Studio projects and
         solutions.
      * ``Xcode`` --- for generating Xcode projects.

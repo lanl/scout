@@ -1014,17 +1014,6 @@ public:
   /// instructions in different blocks at the same location.
   DenseMap<std::pair<const char *, unsigned>, unsigned> DiscriminatorTable;
 
-  typedef DenseMap<const Function *, ReturnInst *> FunctionDataMapTy;
-
-  /// \brief Mapping from a function to its prefix data, which is stored as the
-  /// operand of an unparented ReturnInst so that the prefix data has a Use.
-  FunctionDataMapTy PrefixDataMap;
-
-  /// \brief Mapping from a function to its prologue data, which is stored as
-  /// the operand of an unparented ReturnInst so that the prologue data has a
-  /// Use.
-  FunctionDataMapTy PrologueDataMap;
-
   int getOrAddScopeRecordIdxEntry(MDNode *N, int ExistingIdx);
   int getOrAddScopeInlinedAtIdxEntry(MDNode *Scope, MDNode *IA,int ExistingIdx);
 
@@ -1037,6 +1026,13 @@ public:
   StringMapEntry<uint32_t> *getOrInsertBundleTag(StringRef Tag);
   void getOperandBundleTags(SmallVectorImpl<StringRef> &Tags) const;
   uint32_t getOperandBundleTagID(StringRef Tag) const;
+
+  /// Maintain the GC name for each function.
+  ///
+  /// This saves allocating an additional word in Function for programs which
+  /// do not use GC (i.e., most programs) at the cost of increased overhead for
+  /// clients which do use GC.
+  DenseMap<const Function*, std::string> GCNames;
 
   LLVMContextImpl(LLVMContext &C);
   ~LLVMContextImpl();

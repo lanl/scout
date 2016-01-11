@@ -148,11 +148,15 @@ void AMDGPUAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     TS->EmitAMDGPUHsaProgramScopeGlobal(GV->getName());
   }
 
+  MCSymbolELF *GVSym = cast<MCSymbolELF>(getSymbol(GV));
   const DataLayout &DL = getDataLayout();
+
+  // Emit the size
+  uint64_t Size = DL.getTypeAllocSize(GV->getType()->getElementType());
+  OutStreamer->emitELFSize(GVSym, MCConstantExpr::create(Size, OutContext));
   OutStreamer->PushSection();
   OutStreamer->SwitchSection(
       getObjFileLowering().SectionForGlobal(GV, *Mang, TM));
-  MCSymbol *GVSym = getSymbol(GV);
   const Constant *C = GV->getInitializer();
   OutStreamer->EmitLabel(GVSym);
   EmitGlobalConstant(DL, C);
@@ -417,11 +421,23 @@ void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
     }
   }
 
-  if (VCCUsed)
-    MaxSGPR += 2;
+  unsigned ExtraSGPRs = 0;
 
-  if (FlatUsed)
-    MaxSGPR += 2;
+  if (VCCUsed)
+    ExtraSGPRs = 2;
+
+  if (STM.getGeneration() < AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+    if (FlatUsed)
+      ExtraSGPRs = 4;
+  } else {
+    if (STM.isXNACKEnabled())
+      ExtraSGPRs = 4;
+
+    if (FlatUsed)
+      ExtraSGPRs = 6;
+  }
+
+  MaxSGPR += ExtraSGPRs;
 
   // We found the maximum register index. They start at 0, so add one to get the
   // number of registers.
@@ -615,6 +631,9 @@ void AMDGPUAsmPrinter::EmitAmdKernelCodeT(const MachineFunction &MF,
 
   if (MFI->hasDispatchPtr())
     header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR;
+
+  if (STM.isXNACKEnabled())
+    header.code_properties |= AMD_CODE_PROPERTY_IS_XNACK_SUPPORTED;
 
   header.kernarg_segment_byte_size = MFI->ABIArgOffset;
   header.wavefront_sgpr_count = KernelInfo.NumSGPR;

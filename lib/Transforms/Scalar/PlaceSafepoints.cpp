@@ -499,7 +499,7 @@ static bool isGCSafepointPoll(Function &F) {
 static bool shouldRewriteFunction(Function &F) {
   // TODO: This should check the GCStrategy
   if (F.hasGC()) {
-    const char *FunctionGCName = F.getGC();
+    const auto &FunctionGCName = F.getGC();
     const StringRef StatepointExampleName("statepoint-example");
     const StringRef CoreCLRName("coreclr");
     return (StatepointExampleName == FunctionGCName) ||
@@ -762,6 +762,7 @@ InsertSafepointPoll(Instruction *InsertBefore,
   // path call - where we need to insert a safepoint (parsepoint).
 
   auto *F = M->getFunction(GCSafepointPollName);
+  assert(F && "gc.safepoint_poll function is missing");
   assert(F->getType()->getElementType() ==
          FunctionType::get(Type::getVoidTy(M->getContext()), false) &&
          "gc.safepoint_poll declared with wrong type");

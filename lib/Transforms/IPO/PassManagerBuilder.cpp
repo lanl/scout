@@ -12,25 +12,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm-c/Transforms/PassManagerBuilder.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Analysis/Passes.h"
-#include "llvm/IR/DataLayout.h"
-#include "llvm/IR/FunctionInfo.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/CFLAliasAnalysis.h"
 #include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/FunctionInfo.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/ForceFunctionAttrs.h"
+#include "llvm/Transforms/IPO/InferFunctionAttrs.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Vectorize.h"
 
@@ -187,6 +188,9 @@ void PassManagerBuilder::populateFunctionPassManager(
 
 void PassManagerBuilder::populateModulePassManager(
     legacy::PassManagerBase &MPM) {
+  // Allow forcing function attributes as a debugging and tuning aid.
+  MPM.add(createForceFunctionAttrsLegacyPass());
+
   // If all optimizations are disabled, just run the always-inline pass and,
   // if enabled, the function merging pass.
   if (OptLevel == 0) {
@@ -216,6 +220,9 @@ void PassManagerBuilder::populateModulePassManager(
   addInitialAliasAnalysisPasses(MPM);
 
   if (!DisableUnitAtATime) {
+    // Infer attributes about declarations if possible.
+    MPM.add(createInferFunctionAttrsLegacyPass());
+
     addExtensionsToPM(EP_ModuleOptimizerEarly, MPM);
 
     MPM.add(createIPSCCPPass());              // IP SCCP
@@ -244,7 +251,7 @@ void PassManagerBuilder::populateModulePassManager(
     Inliner = nullptr;
   }
   if (!DisableUnitAtATime)
-    MPM.add(createFunctionAttrsPass());       // Set readonly/readnone attrs
+    MPM.add(createPostOrderFunctionAttrsPass());
   if (OptLevel > 2)
     MPM.add(createArgumentPromotionPass());   // Scalarize uninlined fn args
 
@@ -338,6 +345,9 @@ void PassManagerBuilder::populateModulePassManager(
   // pass manager that we are specifically trying to avoid. To prevent this
   // we must insert a no-op module pass to reset the pass manager.
   MPM.add(createBarrierNoopPass());
+
+  if (!DisableUnitAtATime)
+    MPM.add(createReversePostOrderFunctionAttrsPass());
 
   if (!DisableUnitAtATime && OptLevel > 1 && !PrepareForLTO) {
     // Remove avail extern fns and globals definitions if we aren't
@@ -483,13 +493,20 @@ void PassManagerBuilder::addLTOOptimizationPasses(legacy::PassManagerBase &PM) {
   if (FunctionIndex)
     PM.add(createFunctionImportPass(FunctionIndex));
 
+  // Allow forcing function attributes as a debugging and tuning aid.
+  PM.add(createForceFunctionAttrsLegacyPass());
+
+  // Infer attributes about declarations if possible.
+  PM.add(createInferFunctionAttrsLegacyPass());
+
   // Propagate constants at call sites into the functions they call.  This
   // opens opportunities for globalopt (and inlining) by substituting function
   // pointers passed as arguments to direct uses of functions.
   PM.add(createIPSCCPPass());
 
   // Now that we internalized some globals, see if we can hack on them!
-  PM.add(createFunctionAttrsPass()); // Add norecurse if possible.
+  PM.add(createPostOrderFunctionAttrsPass());
+  PM.add(createReversePostOrderFunctionAttrsPass());
   PM.add(createGlobalOptimizerPass());
   // Promote any localized global vars.
   PM.add(createPromoteMemoryToRegisterPass());
@@ -538,7 +555,7 @@ void PassManagerBuilder::addLTOOptimizationPasses(legacy::PassManagerBase &PM) {
     PM.add(createScalarReplAggregatesPass());
 
   // Run a few AA driven optimizations here and now, to cleanup the code.
-  PM.add(createFunctionAttrsPass()); // Add nocapture.
+  PM.add(createPostOrderFunctionAttrsPass()); // Add nocapture.
   PM.add(createGlobalsAAWrapperPass()); // IP alias analysis.
 
   PM.add(createLICMPass());                 // Hoist loop invariants.
