@@ -1144,29 +1144,11 @@ def getExpectedTimeouts(platform_name):
 
     expected_timeout = set()
 
-    if target.startswith("linux"):
-        expected_timeout |= {
-            "TestConnectRemote.py",
-            "TestCreateAfterAttach.py",
-            "TestEvents.py",
-            "TestExitDuringStep.py",
-
-            # Times out in ~10% of the times on the build bot
-            "TestHelloWorld.py",
-            "TestMultithreaded.py",
-            "TestRegisters.py",  # ~12/600 dosep runs (build 3120-3122)
-            "TestThreadStepOut.py",
-        }
-    elif target.startswith("android"):
+    if target.startswith("android"):
         expected_timeout |= {
             "TestExitDuringStep.py",
             "TestHelloWorld.py",
         }
-        if host.startswith("win32"):
-            expected_timeout |= {
-                "TestEvents.py",
-                "TestThreadStates.py",
-            }
     elif target.startswith("freebsd"):
         expected_timeout |= {
             "TestBreakpointConditions.py",
@@ -1469,7 +1451,11 @@ def rerun_tests(test_subdir, tests_for_rerun, dotest_argv):
     # Do not update legacy counts, I am getting rid of
     # them so no point adding complicated merge logic here.
     rerun_thread_count = 1
-    rerun_runner_name = default_test_runner_name(rerun_thread_count)
+    # Force the parallel test runner to choose a multi-worker strategy.
+    rerun_runner_name = default_test_runner_name(rerun_thread_count + 1)
+    print("rerun will use the '{}' test runner strategy".format(
+        rerun_runner_name))
+
     runner_strategies_by_name = get_test_runner_strategies(rerun_thread_count)
     rerun_runner_func = runner_strategies_by_name[
         rerun_runner_name]
