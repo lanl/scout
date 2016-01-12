@@ -441,8 +441,15 @@ void CodeGenModule::Release() {
     if (llvm::Function *CudaDtorFunction = CUDARuntime->makeModuleDtorFunction())
       AddGlobalDtor(CudaDtorFunction);
   }
-  if (PGOReader && PGOStats.hasDiagnostics())
-    PGOStats.reportDiagnostics(getDiags(), getCodeGenOpts().MainFileName);
+  if (OpenMPRuntime)
+    if (llvm::Function *OpenMPRegistrationFunction =
+            OpenMPRuntime->emitRegistrationFunction())
+      AddGlobalCtor(OpenMPRegistrationFunction, 0);
+  if (PGOReader) {
+    getModule().setMaximumFunctionCount(PGOReader->getMaximumFunctionCount());
+    if (PGOStats.hasDiagnostics())
+      PGOStats.reportDiagnostics(getDiags(), getCodeGenOpts().MainFileName);
+  }
   EmitCtorList(GlobalCtors, "llvm.global_ctors");
   EmitCtorList(GlobalDtors, "llvm.global_dtors");
   EmitGlobalAnnotations();
@@ -676,7 +683,20 @@ void CodeGenModule::setTLSMode(llvm::GlobalValue *GV, const VarDecl &D) const {
 }
 
 StringRef CodeGenModule::getMangledName(GlobalDecl GD) {
-  StringRef &FoundStr = MangledDeclNames[GD.getCanonicalDecl()];
+  GlobalDecl CanonicalGD = GD.getCanonicalDecl();
+
+  // Some ABIs don't have constructor variants.  Make sure that base and
+  // complete constructors get mangled the same.
+  if (const auto *CD = dyn_cast<CXXConstructorDecl>(CanonicalGD.getDecl())) {
+    if (!getTarget().getCXXABI().hasConstructorVariants()) {
+      CXXCtorType OrigCtorType = GD.getCtorType();
+      assert(OrigCtorType == Ctor_Base || OrigCtorType == Ctor_Complete);
+      if (OrigCtorType == Ctor_Base)
+        CanonicalGD = GlobalDecl(CD, Ctor_Complete);
+    }
+  }
+
+  StringRef &FoundStr = MangledDeclNames[CanonicalGD];
   if (!FoundStr.empty())
     return FoundStr;
 
@@ -835,7 +855,8 @@ void CodeGenModule::SetLLVMFunctionAttributes(const Decl *D,
                                               llvm::Function *F) {
   unsigned CallingConv;
   AttributeListType AttributeList;
-  ConstructAttributeList(Info, D, AttributeList, CallingConv, false);
+  ConstructAttributeList(F->getName(), Info, D, AttributeList, CallingConv,
+                         false);
   F->setAttributes(llvm::AttributeSet::get(getLLVMContext(), AttributeList));
   F->setCallingConv(static_cast<llvm::CallingConv::ID>(CallingConv));
 }
@@ -1554,6 +1575,11 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
         return;
     }
   }
+
+  // If this is OpenMP device, check if it is legal to emit this global
+  // normally.
+  if (OpenMPRuntime && OpenMPRuntime->emitTargetGlobal(GD))
+    return;
 
   // Ignore declarations, they will be emitted on their first use.
   if (const auto *FD = dyn_cast<FunctionDecl>(Global)) {
@@ -3691,6 +3717,9 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
   case Decl::FileScopeAsm: {
     // File-scope asm is ignored during device-side CUDA compilation.
     if (LangOpts.CUDA && LangOpts.CUDAIsDevice)
+      break;
+    // File-scope asm is ignored during device-side OpenMP compilation.
+    if (LangOpts.OpenMPIsDevice)
       break;
     auto *AD = cast<FileScopeAsmDecl>(D);
     getModule().appendModuleInlineAsm(AD->getAsmString()->getString());

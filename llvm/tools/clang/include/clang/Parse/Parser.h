@@ -2497,7 +2497,9 @@ private:
   ///
   /// \param Kind Kind of current clause.
   ///
-  OMPClause *ParseOpenMPVarListClause(OpenMPClauseKind Kind);
+  OMPClause *ParseOpenMPVarListClause(OpenMPDirectiveKind DKind,
+                                      OpenMPClauseKind Kind);
+
 public:
   bool ParseUnqualifiedId(CXXScopeSpec &SS, bool EnteringContext,
                           bool AllowDestructorName,

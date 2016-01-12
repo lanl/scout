@@ -24,6 +24,7 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Sema/LocInfoType.h"
 #include "llvm/Support/raw_ostream.h"
 
 // +===== Scout ==============================================================+
@@ -664,6 +665,15 @@ void ASTDumper::dumpTypeAsChild(const Type *T) {
     if (!T) {
       ColorScope Color(*this, NullColor);
       OS << "<<<NULL>>>";
+      return;
+    }
+    if (const LocInfoType *LIT = llvm::dyn_cast<LocInfoType>(T)) {
+      {
+        ColorScope Color(*this, TypeColor);
+        OS << "LocInfo Type";
+      }
+      dumpPointer(T);
+      dumpTypeAsChild(LIT->getTypeSourceInfo()->getType());
       return;
     }
 

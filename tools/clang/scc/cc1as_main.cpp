@@ -125,6 +125,7 @@ struct AssemblerInvocation {
   unsigned RelaxAll : 1;
   unsigned NoExecStack : 1;
   unsigned FatalWarnings : 1;
+  unsigned IncrementalLinkerCompatible : 1;
 
   /// The name of the relocation model to use.
   std::string RelocationModel;
@@ -399,7 +400,7 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
                                                       Opts.CPU);
     Triple T(Opts.Triple);
     Str.reset(TheTarget->createMCObjectStreamer(T, Ctx, *MAB, *Out, CE, *STI,
-                                                Opts.RelaxAll,
+                                                Opts.RelaxAll, Opts.IncrementalLinkerCompatible,
                                                 /*DWARFMustBeAtTheEnd*/ true));
     Str.get()->InitSections(Opts.NoExecStack);
   }

@@ -14,7 +14,8 @@
 #include "clang/Frontend/Utils.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
-#include "clang/Config/config.h" // C_INCLUDE_DIRS, SCC_INCLUDE_DIRS, SCXX_INCLUDE_DIRS
+#include "clang/Config/config.h" // C_INCLUDE_DIRS
+#include "clang/Lex/HeaderMap.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/HeaderSearchOptions.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -503,10 +504,7 @@ AddDefaultCPlusPlusIncludePaths(const LangOptions &Lang, // +===== Scout =====+
     }
     break;
   case llvm::Triple::DragonFly:
-    if (llvm::sys::fs::exists("/usr/lib/gcc47"))
-      AddPath("/usr/include/c++/4.7", CXXSystem, false);
-    else
-      AddPath("/usr/include/c++/4.4", CXXSystem, false);
+    AddPath("/usr/include/c++/5.0", CXXSystem, false);
     break;
   case llvm::Triple::OpenBSD: {
     std::string t = triple.getTriple();

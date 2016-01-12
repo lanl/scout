@@ -2031,6 +2031,11 @@ llvm::DIType *CGDebugInfo::CreateType(const AtomicType *Ty, llvm::DIFile *U) {
   return getOrCreateType(Ty->getValueType(), U);
 }
 
+llvm::DIType* CGDebugInfo::CreateType(const PipeType *Ty,
+                                     llvm::DIFile *U) {
+  return getOrCreateType(Ty->getElementType(), U);
+}
+
 llvm::DIType *CGDebugInfo::CreateEnumType(const EnumType *Ty) {
   const EnumDecl *ED = Ty->getDecl();
 
@@ -2312,6 +2317,9 @@ llvm::DIType *CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile *Unit) {
 
   case Type::Atomic:
     return CreateType(cast<AtomicType>(Ty), Unit);
+
+  case Type::Pipe:
+    return CreateType(cast<PipeType>(Ty), Unit);
 
   case Type::TemplateSpecialization:
     return CreateType(cast<TemplateSpecializationType>(Ty), Unit);
@@ -3472,11 +3480,13 @@ void CGDebugInfo::EmitUsingDecl(const UsingDecl &UD) {
 }
 
 void CGDebugInfo::EmitImportDecl(const ImportDecl &ID) {
-  auto Info = ExternalASTSource::ASTSourceDescriptor(*ID.getImportedModule());
-  DBuilder.createImportedDeclaration(
-      getCurrentContextDescriptor(cast<Decl>(ID.getDeclContext())),
-      getOrCreateModuleRef(Info, DebugTypeExtRefs),
-      getLineNumber(ID.getLocation()));
+  if (Module *M = ID.getImportedModule()) {
+    auto Info = ExternalASTSource::ASTSourceDescriptor(*M);
+    DBuilder.createImportedDeclaration(
+        getCurrentContextDescriptor(cast<Decl>(ID.getDeclContext())),
+        getOrCreateModuleRef(Info, DebugTypeExtRefs),
+        getLineNumber(ID.getLocation()));
+  }
 }
 
 llvm::DIImportedEntity *

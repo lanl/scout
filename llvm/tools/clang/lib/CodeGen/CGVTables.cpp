@@ -389,8 +389,8 @@ void CodeGenFunction::EmitMustTailThunk(const CXXMethodDecl *MD,
   // Apply the standard set of call attributes.
   unsigned CallingConv;
   CodeGen::AttributeListType AttributeList;
-  CGM.ConstructAttributeList(*CurFnInfo, MD, AttributeList, CallingConv,
-                             /*AttrOnCallSite=*/true);
+  CGM.ConstructAttributeList(Callee->getName(), *CurFnInfo, MD, AttributeList,
+                             CallingConv, /*AttrOnCallSite=*/true);
   llvm::AttributeSet Attrs =
       llvm::AttributeSet::get(getLLVMContext(), AttributeList);
   Call->setAttributes(Attrs);
@@ -591,6 +591,24 @@ llvm::Constant *CodeGenVTables::CreateVTableInitializer(
       case VTableComponent::CK_DeletingDtorPointer:
         GD = GlobalDecl(Component.getDestructorDecl(), Dtor_Deleting);
         break;
+      }
+
+      if (CGM.getLangOpts().CUDA) {
+        // Emit NULL for methods we can't codegen on this
+        // side. Otherwise we'd end up with vtable with unresolved
+        // references.
+        const CXXMethodDecl *MD = cast<CXXMethodDecl>(GD.getDecl());
+        // OK on device side: functions w/ __device__ attribute
+        // OK on host side: anything except __device__-only functions.
+        bool CanEmitMethod = CGM.getLangOpts().CUDAIsDevice
+                                 ? MD->hasAttr<CUDADeviceAttr>()
+                                 : (MD->hasAttr<CUDAHostAttr>() ||
+                                    !MD->hasAttr<CUDADeviceAttr>());
+        if (!CanEmitMethod) {
+          Init = llvm::ConstantExpr::getNullValue(Int8PtrTy);
+          break;
+        }
+        // Method is acceptable, continue processing as usual.
       }
 
       if (cast<CXXMethodDecl>(GD.getDecl())->isPure()) {

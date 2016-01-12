@@ -2623,7 +2623,8 @@ void HexagonToolChain::getHexagonLibraryPaths(const ArgList &Args,
   // Other standard paths
   //----------------------------------------------------------------------------
   std::vector<std::string> RootDirs;
-  std::copy(D.PrefixDirs.begin(), D.PrefixDirs.end(), RootDirs.begin());
+  std::copy(D.PrefixDirs.begin(), D.PrefixDirs.end(),
+            std::back_inserter(RootDirs));
 
   std::string TargetDir = getHexagonTargetDir(D.getInstalledDir(),
                                               D.PrefixDirs);
@@ -2727,13 +2728,8 @@ const StringRef HexagonToolChain::GetDefaultCPU() {
 
 const StringRef HexagonToolChain::GetTargetCPUVersion(const ArgList &Args) {
   Arg *CpuArg = nullptr;
-
-  for (auto &A : Args) {
-    if (A->getOption().matches(options::OPT_mcpu_EQ)) {
-      CpuArg = A;
-      A->claim();
-    }
-  }
+  if (Arg *A = Args.getLastArg(options::OPT_mcpu_EQ, options::OPT_march_EQ))
+    CpuArg = A;
 
   StringRef CPU = CpuArg ? CpuArg->getValue() : GetDefaultCPU();
   if (CPU.startswith("hexagon"))
@@ -4156,7 +4152,7 @@ void Linux::AddCudaIncludeArgs(const ArgList &DriverArgs,
   if (CudaInstallation.isValid()) {
     addSystemInclude(DriverArgs, CC1Args, CudaInstallation.getIncludePath());
     CC1Args.push_back("-include");
-    CC1Args.push_back("cuda_runtime.h");
+    CC1Args.push_back("__clang_cuda_runtime_wrapper.h");
   }
 }
 
@@ -4215,10 +4211,7 @@ DragonFly::DragonFly(const Driver &D, const llvm::Triple &Triple,
 
   getFilePaths().push_back(getDriver().Dir + "/../lib");
   getFilePaths().push_back("/usr/lib");
-  if (D.getVFS().exists("/usr/lib/gcc47"))
-    getFilePaths().push_back("/usr/lib/gcc47");
-  else
-    getFilePaths().push_back("/usr/lib/gcc44");
+  getFilePaths().push_back("/usr/lib/gcc50");
 }
 
 Tool *DragonFly::buildAssembler() const {
@@ -4458,6 +4451,13 @@ Tool *MyriadToolChain::buildLinker() const {
   return new tools::Myriad::Linker(*this);
 }
 
+WebAssembly::WebAssembly(const Driver &D, const llvm::Triple &Triple,
+                         const llvm::opt::ArgList &Args)
+  : ToolChain(D, Triple, Args) {
+  // Use LLD by default.
+  DefaultLinker = "lld";
+}
+
 bool WebAssembly::IsMathErrnoDefault() const { return false; }
 
 bool WebAssembly::IsObjCNonFragileABIDefault() const { return true; }
@@ -4480,11 +4480,17 @@ bool WebAssembly::hasBlocksRuntime() const { return false; }
 // TODO: Support profiling.
 bool WebAssembly::SupportsProfiling() const { return false; }
 
+bool WebAssembly::HasNativeLLVMSupport() const { return true; }
+
 void WebAssembly::addClangTargetOptions(const ArgList &DriverArgs,
                                         ArgStringList &CC1Args) const {
   if (DriverArgs.hasFlag(options::OPT_fuse_init_array,
                          options::OPT_fno_use_init_array, true))
     CC1Args.push_back("-fuse-init-array");
+}
+
+Tool *WebAssembly::buildLinker() const {
+  return new tools::wasm::Linker(*this);
 }
 
 PS4CPU::PS4CPU(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)

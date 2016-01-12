@@ -1437,11 +1437,9 @@ static void AddAttributesFromFunctionProtoType(ASTContext &Ctx,
     FuncAttrs.addAttribute(llvm::Attribute::NoUnwind);
 }
 
-void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
-                                           CGCalleeInfo CalleeInfo,
-                                           AttributeListType &PAL,
-                                           unsigned &CallingConv,
-                                           bool AttrOnCallSite) {
+void CodeGenModule::ConstructAttributeList(
+    StringRef Name, const CGFunctionInfo &FI, CGCalleeInfo CalleeInfo,
+    AttributeListType &PAL, unsigned &CallingConv, bool AttrOnCallSite) {
   llvm::AttrBuilder FuncAttrs;
   llvm::AttrBuilder RetAttrs;
   bool HasOptnone = false;
@@ -1516,7 +1514,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
 
   if (AttrOnCallSite) {
     // Attributes that should go on the call site only.
-    if (!CodeGenOpts.SimplifyLibCalls)
+    if (!CodeGenOpts.SimplifyLibCalls ||
+        CodeGenOpts.isNoBuiltinFunc(Name.data()))
       FuncAttrs.addAttribute(llvm::Attribute::NoBuiltin);
     if (!CodeGenOpts.TrapFuncName.empty())
       FuncAttrs.addAttribute("trap-func-name", CodeGenOpts.TrapFuncName);
@@ -3497,8 +3496,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   unsigned CallingConv;
   CodeGen::AttributeListType AttributeList;
-  CGM.ConstructAttributeList(CallInfo, CalleeInfo, AttributeList, CallingConv,
-                             true);
+  CGM.ConstructAttributeList(Callee->getName(), CallInfo, CalleeInfo,
+                             AttributeList, CallingConv,
+                             /*AttrOnCallSite=*/true);
   llvm::AttributeSet Attrs = llvm::AttributeSet::get(getLLVMContext(),
                                                      AttributeList);
 

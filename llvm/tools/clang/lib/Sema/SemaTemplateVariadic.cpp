@@ -763,6 +763,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::Pointer:
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Paren:
+    case DeclaratorChunk::Pipe:
     case DeclaratorChunk::BlockPointer:
 // ===== Scout ========================
     case DeclaratorChunk::UniformMesh:

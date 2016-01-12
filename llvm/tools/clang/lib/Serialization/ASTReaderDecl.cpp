@@ -1814,7 +1814,7 @@ void ASTDeclReader::VisitImportDecl(ImportDecl *D) {
   VisitDecl(D);
   D->ImportedAndComplete.setPointer(readModule(Record, Idx));
   D->ImportedAndComplete.setInt(Record[Idx++]);
-  SourceLocation *StoredLocs = reinterpret_cast<SourceLocation *>(D + 1);
+  SourceLocation *StoredLocs = D->getTrailingObjects<SourceLocation>();
   for (unsigned I = 0, N = Record.back(); I != N; ++I)
     StoredLocs[I] = ReadSourceLocation(Record, Idx);
   ++Idx; // The number of stored source locations.
@@ -1832,7 +1832,8 @@ void ASTDeclReader::VisitFriendDecl(FriendDecl *D) {
   else
     D->Friend = GetTypeSourceInfo(Record, Idx);
   for (unsigned i = 0; i != D->NumTPLists; ++i)
-    D->getTPLists()[i] = Reader.ReadTemplateParameterList(F, Record, Idx);
+    D->getTrailingObjects<TemplateParameterList *>()[i] =
+        Reader.ReadTemplateParameterList(F, Record, Idx);
   D->NextFriend = ReadDeclID(Record, Idx);
   D->UnsupportedFriend = (Record[Idx++] != 0);
   D->FriendLoc = ReadSourceLocation(Record, Idx);
@@ -2181,10 +2182,11 @@ void ASTDeclReader::VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D) {
   D->setDepth(Record[Idx++]);
   D->setPosition(Record[Idx++]);
   if (D->isExpandedParameterPack()) {
-    void **Data = reinterpret_cast<void **>(D + 1);
+    auto TypesAndInfos =
+        D->getTrailingObjects<std::pair<QualType, TypeSourceInfo *>>();
     for (unsigned I = 0, N = D->getNumExpansionTypes(); I != N; ++I) {
-      Data[2*I] = Reader.readType(F, Record, Idx).getAsOpaquePtr();
-      Data[2*I + 1] = GetTypeSourceInfo(Record, Idx);
+      new (&TypesAndInfos[I].first) QualType(Reader.readType(F, Record, Idx));
+      TypesAndInfos[I].second = GetTypeSourceInfo(Record, Idx);
     }
   } else {
     // Rest of NonTypeTemplateParmDecl.
@@ -2200,7 +2202,8 @@ void ASTDeclReader::VisitTemplateTemplateParmDecl(TemplateTemplateParmDecl *D) {
   D->setDepth(Record[Idx++]);
   D->setPosition(Record[Idx++]);
   if (D->isExpandedParameterPack()) {
-    void **Data = reinterpret_cast<void **>(D + 1);
+    TemplateParameterList **Data =
+        D->getTrailingObjects<TemplateParameterList *>();
     for (unsigned I = 0, N = D->getNumExpansionTemplateParameters();
          I != N; ++I)
       Data[I] = Reader.ReadTemplateParameterList(F, Record, Idx);
@@ -3720,6 +3723,21 @@ void ASTDeclReader::UpdateDecl(Decl *D, ModuleFile &ModuleFile,
       cast<VarDecl>(D)->getMemberSpecializationInfo()->setPointOfInstantiation(
           Reader.ReadSourceLocation(ModuleFile, Record, Idx));
       break;
+
+    case UPD_CXX_INSTANTIATED_DEFAULT_ARGUMENT: {
+      auto Param = cast<ParmVarDecl>(D);
+
+      // We have to read the default argument regardless of whether we use it
+      // so that hypothetical further update records aren't messed up.
+      // TODO: Add a function to skip over the next expr record.
+      auto DefaultArg = Reader.ReadExpr(F);
+
+      // Only apply the update if the parameter still has an uninstantiated
+      // default argument.
+      if (Param->hasUninstantiatedDefaultArg())
+        Param->setDefaultArg(DefaultArg);
+      break;
+    }
 
     case UPD_CXX_ADDED_FUNCTION_DEFINITION: {
       FunctionDecl *FD = cast<FunctionDecl>(D);

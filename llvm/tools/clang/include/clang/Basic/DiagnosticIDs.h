@@ -29,18 +29,23 @@ namespace clang {
     enum {
       DIAG_START_COMMON        =                                 0,
       DIAG_START_DRIVER        = DIAG_START_COMMON          +  300,
-      DIAG_START_FRONTEND      = DIAG_START_DRIVER          +  100,
+      DIAG_START_FRONTEND      = DIAG_START_DRIVER          +  200,
       DIAG_START_SERIALIZATION = DIAG_START_FRONTEND        +  100,
       DIAG_START_LEX           = DIAG_START_SERIALIZATION   +  120,
-      DIAG_START_PARSE         = DIAG_START_LEX             +  300,
       // +===== Scout ============================================================+
+      //DIAG_START_PARSE         = DIAG_START_LEX             +  300,
       //DIAG_START_AST           = DIAG_START_PARSE          +  500,
+      //DIAG_START_COMMENT       = DIAG_START_AST             +  110,
+      //DIAG_START_SEMA          = DIAG_START_COMMENT         +  100,
+      //DIAG_START_ANALYSIS      = DIAG_START_SEMA            + 3000,
+      //DIAG_UPPER_LIMIT         = DIAG_START_ANALYSIS        +  100
+      DIAG_START_PARSE         = DIAG_START_LEX             +  400,
       DIAG_START_AST           = DIAG_START_PARSE           +  600,
-      DIAG_START_COMMENT       = DIAG_START_AST             +  110,
+      DIAG_START_COMMENT       = DIAG_START_AST             +  200,
+      DIAG_START_SEMA          = DIAG_START_COMMENT         +  200,
+      DIAG_START_ANALYSIS      = DIAG_START_SEMA            + 3500,
+      DIAG_UPPER_LIMIT         = DIAG_START_ANALYSIS        +  200
       // +========================================================================+
-      DIAG_START_SEMA          = DIAG_START_COMMENT         +  100,
-      DIAG_START_ANALYSIS      = DIAG_START_SEMA            + 3000,
-      DIAG_UPPER_LIMIT         = DIAG_START_ANALYSIS        +  100
     };
 
     class CustomDiagInfo;
