@@ -1809,8 +1809,13 @@ void UnwrappedLineParser::parseJavaScriptEs6ImportExport() {
     return;
   }
 
+  // Consume the "abstract" in "export abstract class".
+  if (FormatTok->is(Keywords.kw_abstract))
+    nextToken();
+
   if (FormatTok->isOneOf(tok::kw_const, tok::kw_class, tok::kw_enum,
-                         Keywords.kw_let, Keywords.kw_var))
+                         Keywords.kw_interface, Keywords.kw_let,
+                         Keywords.kw_var))
     return; // Fall through to parsing the corresponding structure.
 
   while (!eof() && FormatTok->isNot(tok::semi)) {
