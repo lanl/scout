@@ -137,11 +137,6 @@ public:
     MachineInstr *MIa, MachineInstr *MIb,
     AliasAnalysis *AA = nullptr) const override;
 
-  MachineInstr *buildMovInstr(MachineBasicBlock *MBB,
-                              MachineBasicBlock::iterator I,
-                              unsigned DstReg, unsigned SrcReg) const override;
-  bool isMov(unsigned Opcode) const override;
-
   bool FoldImmediate(MachineInstr *UseMI, MachineInstr *DefMI,
                      unsigned Reg, MachineRegisterInfo *MRI) const final;
 
@@ -419,22 +414,8 @@ public:
   /// VALU if necessary.
   void moveToVALU(MachineInstr &MI) const;
 
-  unsigned calculateIndirectAddress(unsigned RegIndex,
-                                    unsigned Channel) const override;
-
   const TargetRegisterClass *getIndirectAddrRegClass() const override;
 
-  MachineInstrBuilder buildIndirectWrite(MachineBasicBlock *MBB,
-                                         MachineBasicBlock::iterator I,
-                                         unsigned ValueReg,
-                                         unsigned Address,
-                                         unsigned OffsetReg) const override;
-
-  MachineInstrBuilder buildIndirectRead(MachineBasicBlock *MBB,
-                                        MachineBasicBlock::iterator I,
-                                        unsigned ValueReg,
-                                        unsigned Address,
-                                        unsigned OffsetReg) const override;
   void reserveIndirectRegisters(BitVector &Reserved,
                                 const MachineFunction &MF) const;
 
@@ -462,6 +443,19 @@ public:
 
   uint64_t getDefaultRsrcDataFormat() const;
   uint64_t getScratchRsrcWords23() const;
+
+  bool isLowLatencyInstruction(const MachineInstr *MI) const;
+  bool isHighLatencyInstruction(const MachineInstr *MI) const;
+
+  /// \brief Return the descriptor of the target-specific machine instruction
+  /// that corresponds to the specified pseudo or native opcode.
+  const MCInstrDesc &getMCOpcodeFromPseudo(unsigned Opcode) const {
+    return get(pseudoToMCOpcode(Opcode));
+  }
+
+  ArrayRef<std::pair<int, const char *>>
+  getSerializableTargetIndices() const override;
+
 };
 
 namespace AMDGPU {

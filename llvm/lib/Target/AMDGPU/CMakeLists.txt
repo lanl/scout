@@ -18,7 +18,6 @@ add_llvm_target(AMDGPUCodeGen
   AMDGPUAnnotateKernelFeatures.cpp
   AMDGPUAnnotateUniformValues.cpp
   AMDGPUAsmPrinter.cpp
-  AMDGPUDiagnosticInfoUnsupported.cpp
   AMDGPUFrameLowering.cpp
   AMDGPUTargetObjectFile.cpp
   AMDGPUIntrinsicInfo.cpp
@@ -58,6 +57,7 @@ add_llvm_target(AMDGPUCodeGen
   SILowerControlFlow.cpp
   SILowerI1Copies.cpp
   SIMachineFunctionInfo.cpp
+  SIMachineScheduler.cpp
   SIRegisterInfo.cpp
   SIShrinkInstructions.cpp
   SITypeRewriter.cpp

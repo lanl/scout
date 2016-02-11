@@ -22,20 +22,21 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/FaultMaps.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCDisassembler.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
+#include "llvm/MC/MCDisassembler/MCRelocationInfo.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
-#include "llvm/MC/MCRelocationInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Object/Archive.h"
-#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/COFF.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
@@ -165,6 +166,11 @@ cl::opt<bool>
 llvm::PrivateHeaders("private-headers",
                      cl::desc("Display format specific file headers"));
 
+cl::opt<bool>
+llvm::FirstPrivateHeader("private-header",
+                         cl::desc("Display only the first format specific file "
+                                  "header"));
+
 static cl::alias
 PrivateHeadersShort("p", cl::desc("Alias for --private-headers"),
                     cl::aliasopt(PrivateHeaders));
@@ -175,6 +181,11 @@ cl::opt<bool>
 
 cl::opt<bool> PrintFaultMaps("fault-map-section",
                              cl::desc("Display contents of faultmap section"));
+
+cl::opt<DIDumpType> llvm::DwarfDumpType(
+    "dwarf", cl::init(DIDT_Null), cl::desc("Dump of dwarf debug sections:"),
+    cl::values(clEnumValN(DIDT_Frames, "frames", ".debug_frame"),
+               clEnumValEnd));
 
 static StringRef ToolName;
 
@@ -1495,7 +1506,19 @@ static void printFaultMaps(const ObjectFile *Obj) {
   outs() << FMP;
 }
 
-static void printPrivateFileHeader(const ObjectFile *o) {
+static void printPrivateFileHeaders(const ObjectFile *o) {
+  if (o->isELF())
+    printELFFileHeader(o);
+  else if (o->isCOFF())
+    printCOFFFileHeader(o);
+  else if (o->isMachO()) {
+    printMachOFileHeader(o);
+    printMachOLoadCommands(o);
+  } else
+    report_fatal_error("Invalid/Unsupported object file format");
+}
+
+static void printFirstPrivateFileHeader(const ObjectFile *o) {
   if (o->isELF())
     printELFFileHeader(o);
   else if (o->isCOFF())
@@ -1527,7 +1550,9 @@ static void DumpObject(const ObjectFile *o) {
   if (UnwindInfo)
     PrintUnwindInfo(o);
   if (PrivateHeaders)
-    printPrivateFileHeader(o);
+    printPrivateFileHeaders(o);
+  if (FirstPrivateHeader)
+    printFirstPrivateFileHeader(o);
   if (ExportsTrie)
     printExportsTrie(o);
   if (Rebase)
@@ -1542,6 +1567,11 @@ static void DumpObject(const ObjectFile *o) {
     printRawClangAST(o);
   if (PrintFaultMaps)
     printFaultMaps(o);
+  if (DwarfDumpType != DIDT_Null) {
+    std::unique_ptr<DIContext> DICtx(new DWARFContextInMemory(*o));
+    // Dump the complete DWARF structure.
+    DICtx->dump(outs(), DwarfDumpType, true /* DumpEH */);
+  }
 }
 
 /// @brief Dump each object file in \a a;
@@ -1618,6 +1648,7 @@ int main(int argc, char **argv) {
       && !SymbolTable
       && !UnwindInfo
       && !PrivateHeaders
+      && !FirstPrivateHeader
       && !ExportsTrie
       && !Rebase
       && !Bind
@@ -1634,7 +1665,8 @@ int main(int argc, char **argv) {
       && !(DylibId && MachOOpt)
       && !(ObjcMetaData && MachOOpt)
       && !(FilterSections.size() != 0 && MachOOpt)
-      && !PrintFaultMaps) {
+      && !PrintFaultMaps
+      && DwarfDumpType == DIDT_Null) {
     cl::PrintHelpMessage();
     return 2;
   }
