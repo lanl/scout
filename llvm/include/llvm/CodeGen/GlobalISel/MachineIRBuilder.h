@@ -45,11 +45,6 @@ class MachineIRBuilder {
   bool Before;
   /// @}
 
-  MachineBasicBlock &getMBB() {
-    assert(MBB && "MachineBasicBlock is not set");
-    return *MBB;
-  }
-
   const TargetInstrInfo &getTII() {
     assert(TII && "TargetInstrInfo is not set");
     return *TII;
@@ -65,9 +60,15 @@ public:
     return *MF;
   }
 
+  /// Getter for the basic block we currently build.
+  MachineBasicBlock &getMBB() {
+    assert(MBB && "MachineBasicBlock is not set");
+    return *MBB;
+  }
+
   /// Setters for the insertion point.
   /// @{
-  /// Set MachineFunction where to build instructions.
+  /// Set the MachineFunction where to build instructions.
   void setFunction(MachineFunction &);
 
   /// Set the insertion point to the beginning (\p Beginning = true) or end
@@ -92,6 +93,7 @@ public:
   /// setBasicBlock or setMI.
   ///
   /// \pre setBasicBlock or setMI must have been called.
+  /// \pre Ty == nullptr or isPreISelGenericOpcode(Opcode)
   ///
   /// \return The newly created instruction.
   MachineInstr *buildInstr(unsigned Opcode, Type *Ty, unsigned Res,
@@ -101,6 +103,7 @@ public:
   /// I.e., instruction with a non-generic opcode.
   ///
   /// \pre setBasicBlock or setMI must have been called.
+  /// \pre not isPreISelGenericOpcode(\p Opcode)
   ///
   /// \return The newly created instruction.
   MachineInstr *buildInstr(unsigned Opcode, unsigned Res, unsigned Op0,
@@ -109,6 +112,7 @@ public:
   /// Build and insert \p Res<def> = \p Opcode \p Op0.
   ///
   /// \pre setBasicBlock or setMI must have been called.
+  /// \pre not isPreISelGenericOpcode(\p Opcode)
   ///
   /// \return The newly created instruction.
   MachineInstr *buildInstr(unsigned Opcode, unsigned Res, unsigned Op0);
@@ -116,6 +120,7 @@ public:
   /// Build and insert = \p Opcode.
   ///
   /// \pre setBasicBlock or setMI must have been called.
+  /// \pre not isPreISelGenericOpcode(\p Opcode)
   ///
   /// \return The newly created instruction.
   MachineInstr *buildInstr(unsigned Opcode);
