@@ -1011,25 +1011,6 @@ bool SIInstrInfo::findCommutedOpIndices(MachineInstr *MI,
   return fixCommutedOpIndices(SrcOpIdx0, SrcOpIdx1, Src0Idx, Src1Idx);
 }
 
-MachineInstr *SIInstrInfo::buildMovInstr(MachineBasicBlock *MBB,
-                                         MachineBasicBlock::iterator I,
-                                         unsigned DstReg,
-                                         unsigned SrcReg) const {
-  return BuildMI(*MBB, I, MBB->findDebugLoc(I), get(AMDGPU::V_MOV_B32_e32),
-                 DstReg) .addReg(SrcReg);
-}
-
-bool SIInstrInfo::isMov(unsigned Opcode) const {
-  switch(Opcode) {
-  default: return false;
-  case AMDGPU::S_MOV_B32:
-  case AMDGPU::S_MOV_B64:
-  case AMDGPU::V_MOV_B32_e32:
-  case AMDGPU::V_MOV_B32_e64:
-    return true;
-  }
-}
-
 static void removeModOperands(MachineInstr &MI) {
   unsigned Opc = MI.getOpcode();
   int Src0ModIdx = AMDGPU::getNamedOperandIdx(Opc,
@@ -1807,7 +1788,7 @@ bool SIInstrInfo::isLegalVSrcOperand(const MachineRegisterInfo &MRI,
 bool SIInstrInfo::isOperandLegal(const MachineInstr *MI, unsigned OpIdx,
                                  const MachineOperand *MO) const {
   const MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
-  const MCInstrDesc &InstDesc = get(MI->getOpcode());
+  const MCInstrDesc &InstDesc = MI->getDesc();
   const MCOperandInfo &OpInfo = InstDesc.OpInfo[OpIdx];
   const TargetRegisterClass *DefinedRC =
       OpInfo.RegClass != -1 ? RI.getRegClass(OpInfo.RegClass) : nullptr;
@@ -1816,13 +1797,17 @@ bool SIInstrInfo::isOperandLegal(const MachineInstr *MI, unsigned OpIdx,
 
   if (isVALU(*MI) &&
       usesConstantBus(MRI, *MO, DefinedRC->getSize())) {
-    unsigned SGPRUsed =
-        MO->isReg() ? MO->getReg() : (unsigned)AMDGPU::NoRegister;
+
+    RegSubRegPair SGPRUsed;
+    if (MO->isReg())
+      SGPRUsed = RegSubRegPair(MO->getReg(), MO->getSubReg());
+
     for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
       if (i == OpIdx)
         continue;
       const MachineOperand &Op = MI->getOperand(i);
-      if (Op.isReg() && Op.getReg() != SGPRUsed &&
+      if (Op.isReg() &&
+          (Op.getReg() != SGPRUsed.Reg || Op.getSubReg() != SGPRUsed.SubReg) &&
           usesConstantBus(MRI, Op, getOpSize(*MI, i))) {
         return false;
       }
@@ -2614,12 +2599,6 @@ void SIInstrInfo::moveToVALU(MachineInstr &TopInst) const {
 // Indirect addressing callbacks
 //===----------------------------------------------------------------------===//
 
-unsigned SIInstrInfo::calculateIndirectAddress(unsigned RegIndex,
-                                                 unsigned Channel) const {
-  assert(Channel == 0);
-  return RegIndex;
-}
-
 const TargetRegisterClass *SIInstrInfo::getIndirectAddrRegClass() const {
   return &AMDGPU::VGPR_32RegClass;
 }
@@ -2981,42 +2960,6 @@ unsigned SIInstrInfo::findUsedSGPR(const MachineInstr *MI,
   return SGPRReg;
 }
 
-MachineInstrBuilder SIInstrInfo::buildIndirectWrite(
-                                   MachineBasicBlock *MBB,
-                                   MachineBasicBlock::iterator I,
-                                   unsigned ValueReg,
-                                   unsigned Address, unsigned OffsetReg) const {
-  const DebugLoc &DL = MBB->findDebugLoc(I);
-  unsigned IndirectBaseReg = AMDGPU::VGPR_32RegClass.getRegister(
-                                      getIndirectIndexBegin(*MBB->getParent()));
-
-  return BuildMI(*MBB, I, DL, get(AMDGPU::SI_INDIRECT_DST_V1))
-          .addReg(IndirectBaseReg, RegState::Define)
-          .addOperand(I->getOperand(0))
-          .addReg(IndirectBaseReg)
-          .addReg(OffsetReg)
-          .addImm(0)
-          .addReg(ValueReg);
-}
-
-MachineInstrBuilder SIInstrInfo::buildIndirectRead(
-                                   MachineBasicBlock *MBB,
-                                   MachineBasicBlock::iterator I,
-                                   unsigned ValueReg,
-                                   unsigned Address, unsigned OffsetReg) const {
-  const DebugLoc &DL = MBB->findDebugLoc(I);
-  unsigned IndirectBaseReg = AMDGPU::VGPR_32RegClass.getRegister(
-                                      getIndirectIndexBegin(*MBB->getParent()));
-
-  return BuildMI(*MBB, I, DL, get(AMDGPU::SI_INDIRECT_SRC_V1))
-          .addOperand(I->getOperand(0))
-          .addOperand(I->getOperand(1))
-          .addReg(IndirectBaseReg)
-          .addReg(OffsetReg)
-          .addImm(0);
-
-}
-
 void SIInstrInfo::reserveIndirectRegisters(BitVector &Reserved,
                                             const MachineFunction &MF) const {
   int End = getIndirectIndexEnd(MF);
@@ -3078,4 +3021,27 @@ uint64_t SIInstrInfo::getScratchRsrcWords23() const {
     Rsrc23 &= ~AMDGPU::RSRC_DATA_FORMAT;
 
   return Rsrc23;
+}
+
+bool SIInstrInfo::isLowLatencyInstruction(const MachineInstr *MI) const {
+  unsigned Opc = MI->getOpcode();
+
+  return isSMRD(Opc);
+}
+
+bool SIInstrInfo::isHighLatencyInstruction(const MachineInstr *MI) const {
+  unsigned Opc = MI->getOpcode();
+
+  return isMUBUF(Opc) || isMTBUF(Opc) || isMIMG(Opc);
+}
+
+ArrayRef<std::pair<int, const char *>>
+SIInstrInfo::getSerializableTargetIndices() const {
+  static const std::pair<int, const char *> TargetIndices[] = {
+      {AMDGPU::TI_CONSTDATA_START, "amdgpu-constdata-start"},
+      {AMDGPU::TI_SCRATCH_RSRC_DWORD0, "amdgpu-scratch-rsrc-dword0"},
+      {AMDGPU::TI_SCRATCH_RSRC_DWORD1, "amdgpu-scratch-rsrc-dword1"},
+      {AMDGPU::TI_SCRATCH_RSRC_DWORD2, "amdgpu-scratch-rsrc-dword2"},
+      {AMDGPU::TI_SCRATCH_RSRC_DWORD3, "amdgpu-scratch-rsrc-dword3"}};
+  return makeArrayRef(TargetIndices);
 }

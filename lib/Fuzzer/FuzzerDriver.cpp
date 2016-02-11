@@ -23,6 +23,10 @@
 #include <algorithm>
 #include <iterator>
 
+// This function should be present in the libFuzzer so that the client
+// binary can test for its existence.
+extern "C" __attribute__((used)) void __libfuzzer_is_present() {}
+
 namespace fuzzer {
 
 // Program arguments.
@@ -66,8 +70,14 @@ static std::vector<std::string> *Inputs;
 static std::string *ProgName;
 
 static void PrintHelp() {
-  Printf("Usage: %s [-flag1=val1 [-flag2=val2 ...] ] [dir1 [dir2 ...] ]\n",
-         ProgName->c_str());
+  Printf("Usage:\n");
+  auto Prog = ProgName->c_str();
+  Printf("\nTo run fuzzing pass 0 or more directories.\n");
+  Printf("%s [-flag1=val1 [-flag2=val2 ...] ] [dir1 [dir2 ...] ]\n", Prog);
+
+  Printf("\nTo run individual tests without fuzzing pass 1 or more files:\n");
+  Printf("%s [-flag1=val1 [-flag2=val2 ...] ] file1 [file2 ...]\n", Prog);
+
   Printf("\nFlags: (strictly in form -flag=value)\n");
   size_t MaxFlagLen = 0;
   for (size_t F = 0; F < kNumFlags; F++)
@@ -93,6 +103,23 @@ static const char *FlagValue(const char *Param, const char *Name) {
   return nullptr;
 }
 
+// Avoid calling stol as it triggers a bug in clang/glibc build.
+static long MyStol(const char *Str) {
+  long Res = 0;
+  long Sign = 1;
+  if (*Str == '-') {
+    Str++;
+    Sign = -1;
+  }
+  for (size_t i = 0; Str[i]; i++) {
+    char Ch = Str[i];
+    if (Ch < '0' || Ch > '9')
+      return Res;
+    Res = Res * 10 + (Ch - '0');
+  }
+  return Res * Sign;
+}
+
 static bool ParseOneFlag(const char *Param) {
   if (Param[0] != '-') return false;
   if (Param[1] == '-') {
@@ -108,7 +135,7 @@ static bool ParseOneFlag(const char *Param) {
     const char *Str = FlagValue(Param, Name);
     if (Str)  {
       if (FlagDescriptions[F].IntFlag) {
-        int Val = std::stol(Str);
+        int Val = MyStol(Str);
         *FlagDescriptions[F].IntFlag = Val;
         if (Flags.verbosity >= 2)
           Printf("Flag: %s %d\n", Name, Val);;
@@ -206,8 +233,16 @@ int RunOneTest(Fuzzer *F, const char *InputFilePath) {
   return 0;
 }
 
+static bool AllInputsAreFiles() {
+  if (Inputs->empty()) return false;
+  for (auto &Path : *Inputs)
+    if (!IsFile(Path))
+      return false;
+  return true;
+}
+
 int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
-  FuzzerRandomLibc Rand(0);
+  FuzzerRandom_mt19937 Rand(0);
   SimpleUserSuppliedFuzzer SUSF(&Rand, Callback);
   return FuzzerDriver(argc, argv, SUSF);
 }
@@ -218,7 +253,7 @@ int FuzzerDriver(int argc, char **argv, UserSuppliedFuzzer &USF) {
 }
 
 int FuzzerDriver(const std::vector<std::string> &Args, UserCallback Callback) {
-  FuzzerRandomLibc Rand(0);
+  FuzzerRandom_mt19937 Rand(0);
   SimpleUserSuppliedFuzzer SUSF(&Rand, Callback);
   return FuzzerDriver(Args, SUSF);
 }
@@ -247,6 +282,8 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   Options.Verbosity = Flags.verbosity;
   Options.MaxLen = Flags.max_len;
   Options.UnitTimeoutSec = Flags.timeout;
+  Options.AbortOnTimeout = Flags.abort_on_timeout;
+  Options.TimeoutExitCode = Flags.timeout_exitcode;
   Options.MaxTotalTimeSec = Flags.max_total_time;
   Options.DoCrossOver = Flags.cross_over;
   Options.MutateDepth = Flags.mutate_depth;
@@ -254,6 +291,7 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   Options.UseCounters = Flags.use_counters;
   Options.UseIndirCalls = Flags.use_indir_calls;
   Options.UseTraces = Flags.use_traces;
+  Options.UseMemcmp = Flags.use_memcmp;
   Options.ShuffleAtStartUp = Flags.shuffle;
   Options.PreferSmallDuringInitialShuffle =
       Flags.prefer_small_during_initial_shuffle;
@@ -284,7 +322,8 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   Fuzzer F(USF, Options);
 
   for (auto &U: Dictionary)
-    USF.GetMD().AddWordToManualDictionary(U);
+    if (U.size() <= Word::GetMaxSize())
+      USF.GetMD().AddWordToManualDictionary(Word(U.data(), U.size()));
 
   // Timer
   if (Flags.timeout > 0)
@@ -292,6 +331,18 @@ int FuzzerDriver(const std::vector<std::string> &Args,
 
   if (Flags.test_single_input) {
     RunOneTest(&F, Flags.test_single_input);
+    exit(0);
+  }
+
+  if (AllInputsAreFiles()) {
+    Printf("%s: Running %zd inputs.\n", ProgName->c_str(), Inputs->size());
+    for (auto &Path : *Inputs) {
+      auto StartTime = system_clock::now();
+      RunOneTest(&F, Path.c_str());
+      auto StopTime = system_clock::now();
+      auto MS = duration_cast<milliseconds>(StopTime - StartTime).count();
+      Printf("%s: %zd ms\n", Path.c_str(), (long)MS);
+    }
     exit(0);
   }
 
@@ -308,7 +359,8 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   unsigned Seed = Flags.seed;
   // Initialize Seed.
   if (Seed == 0)
-    Seed = time(0) * 10000 + getpid();
+    Seed = (std::chrono::system_clock::now().time_since_epoch().count() << 10) +
+           getpid();
   if (Flags.verbosity)
     Printf("Seed: %u\n", Seed);
   USF.GetRand().ResetSeed(Seed);
