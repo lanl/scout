@@ -211,6 +211,7 @@ def OverloadedShiftOpParentheses: DiagGroup<"overloaded-shift-op-parentheses">;
 def DanglingElse: DiagGroup<"dangling-else">;
 def DanglingField : DiagGroup<"dangling-field">;
 def DistributedObjectModifiers : DiagGroup<"distributed-object-modifiers">;
+def ExpansionToDefined : DiagGroup<"expansion-to-defined">;
 def FlagEnum : DiagGroup<"flag-enum">;
 def IncrementBool : DiagGroup<"increment-bool", [DeprecatedIncrementBool]>;
 def InfiniteRecursion : DiagGroup<"infinite-recursion">;
@@ -854,3 +855,5 @@ def FutureCompat : DiagGroup<"future-compat">;
 def InvalidOrNonExistentDirectory : DiagGroup<"invalid-or-nonexistent-directory">;
 
 def OptionIgnored : DiagGroup<"option-ignored">;
+
+def UnknownArgument : DiagGroup<"unknown-argument">;

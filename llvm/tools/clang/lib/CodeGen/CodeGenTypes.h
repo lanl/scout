@@ -197,6 +197,9 @@ class CodeGenTypes {
   /// corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;
 
+  llvm::SmallSet<const Type *, 8> RecordsWithOpaqueMemberPointers;
+
+public:
   CodeGenTypes(CodeGenModule &cgm);
   ~CodeGenTypes();
 
@@ -270,6 +273,10 @@ class CodeGenTypes {
   
   void UpdateCompletedType(const FrameDecl *FD);
   // +========================================================================+`
+  
+  /// \brief Remove stale types from the type cache when an inheritance model
+  /// gets assigned to a class.
+  void RefreshTypeCacheForClass(const CXXRecordDecl *RD);
 
   /// getNullaryFunctionInfo - Get the function info for a void()
   /// function with standard CC.

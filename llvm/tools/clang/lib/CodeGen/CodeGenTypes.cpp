@@ -276,6 +276,17 @@ void CodeGenTypes::UpdateCompletedType(const TagDecl *TD) {
     DI->completeType(RD);
 }
 
+void CodeGenTypes::RefreshTypeCacheForClass(const CXXRecordDecl *RD) {
+  QualType T = Context.getRecordType(RD);
+  T = Context.getCanonicalType(T);
+
+  const Type *Ty = T.getTypePtr();
+  if (RecordsWithOpaqueMemberPointers.count(Ty)) {
+    TypeCache.clear();
+    RecordsWithOpaqueMemberPointers.clear();
+  }
+}
+
 static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
                                     const llvm::fltSemantics &format,
                                     bool UseNativeHalf = false) {
@@ -660,10 +671,13 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
   }
 
   case Type::MemberPointer: {
-    if (!getCXXABI().isMemberPointerConvertible(cast<MemberPointerType>(Ty)))
-      return llvm::StructType::create(getLLVMContext());
-    ResultType = 
-      getCXXABI().ConvertMemberPointerType(cast<MemberPointerType>(Ty));
+    auto *MPTy = cast<MemberPointerType>(Ty);
+    if (!getCXXABI().isMemberPointerConvertible(MPTy)) {
+      RecordsWithOpaqueMemberPointers.insert(MPTy->getClass());
+      ResultType = llvm::StructType::create(getLLVMContext());
+    } else {
+      ResultType = getCXXABI().ConvertMemberPointerType(MPTy);
+    }
     break;
   }
 

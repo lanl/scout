@@ -214,15 +214,15 @@ SValBuilder::getDerivedRegionValueSymbolVal(SymbolRef parentSymbol,
 }
 
 DefinedSVal SValBuilder::getFunctionPointer(const FunctionDecl *func) {
-  return loc::MemRegionVal(MemMgr.getFunctionTextRegion(func));
+  return loc::MemRegionVal(MemMgr.getFunctionCodeRegion(func));
 }
 
 DefinedSVal SValBuilder::getBlockPointer(const BlockDecl *block,
                                          CanQualType locTy,
                                          const LocationContext *locContext,
                                          unsigned blockCount) {
-  const BlockTextRegion *BC =
-    MemMgr.getBlockTextRegion(block, locTy, locContext->getAnalysisDeclContext());
+  const BlockCodeRegion *BC =
+    MemMgr.getBlockCodeRegion(block, locTy, locContext->getAnalysisDeclContext());
   const BlockDataRegion *BD = MemMgr.getBlockDataRegion(BC, locContext,
                                                         blockCount);
   return loc::MemRegionVal(BD);
@@ -367,6 +367,11 @@ SVal SValBuilder::evalBinOp(ProgramStateRef state, BinaryOperator::Opcode op,
   if (lhs.isUnknown() || rhs.isUnknown())
     return UnknownVal();
 
+  if (lhs.getAs<nonloc::LazyCompoundVal>() ||
+      rhs.getAs<nonloc::LazyCompoundVal>()) {
+    return UnknownVal();
+  }
+
   if (Optional<Loc> LV = lhs.getAs<Loc>()) {
     if (Optional<Loc> RV = rhs.getAs<Loc>())
       return evalBinOpLL(state, op, *LV, *RV, type);
@@ -451,7 +456,7 @@ SVal SValBuilder::evalIntegralCast(ProgramStateRef state, SVal val,
   NonLoc FromVal = val.castAs<NonLoc>();
   QualType CmpTy = getConditionType();
   NonLoc CompVal =
-      evalBinOpNN(state, BO_LT, FromVal, ToTypeMaxVal, CmpTy).castAs<NonLoc>();
+      evalBinOpNN(state, BO_LE, FromVal, ToTypeMaxVal, CmpTy).castAs<NonLoc>();
   ProgramStateRef IsNotTruncated, IsTruncated;
   std::tie(IsNotTruncated, IsTruncated) = state->assume(CompVal);
   if (!IsNotTruncated && IsTruncated) {

@@ -28,7 +28,7 @@ if(CLANG_PLUGIN_SUPPORT)
   set(LLVM_NO_DEAD_STRIP 1)
 endif()
 
-add_clang_executable(clang
+add_clang_tool(clang
   driver.cpp
   cc1_main.cpp
   cc1as_main.cpp
@@ -57,18 +57,6 @@ if(CLANG_PLUGIN_SUPPORT)
 endif()
 
 add_dependencies(clang clang-headers)
-
-install(TARGETS clang
-  RUNTIME DESTINATION bin
-  COMPONENT clang)
-
-if(NOT CMAKE_CONFIGURATION_TYPES)
-  add_custom_target(install-clang
-    DEPENDS clang
-    COMMAND "${CMAKE_COMMAND}"
-            -DCMAKE_INSTALL_COMPONENT=clang
-            -P "${CMAKE_BINARY_DIR}/cmake_install.cmake")
-endif()
 
 if(NOT CLANG_LINKS_TO_CREATE)
   set(CLANG_LINKS_TO_CREATE clang++ clang-cl)
@@ -106,7 +94,7 @@ if (APPLE)
   set(TOOL_INFO_BUILD_VERSION)
 endif()
 
-if(CLANG_ORDER_FILE)
+if(CLANG_ORDER_FILE AND EXISTS CLANG_ORDER_FILE)
   target_link_libraries(clang "-Wl,-order_file,${CLANG_ORDER_FILE}")
 endif()
 
