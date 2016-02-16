@@ -150,6 +150,8 @@ const char *Triple::getVendorTypeName(VendorType Kind) {
   case NVIDIA: return "nvidia";
   case CSR: return "csr";
   case Myriad: return "myriad";
+  case AMD: return "amd";
+  case Mesa: return "mesa";
   }
 
   llvm_unreachable("Invalid VendorType!");
@@ -186,6 +188,7 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case ELFIAMCU: return "elfiamcu";
   case TvOS: return "tvos";
   case WatchOS: return "watchos";
+  case Mesa3D: return "mesa3d";
   }
 
   llvm_unreachable("Invalid OSType");
@@ -412,6 +415,8 @@ static Triple::VendorType parseVendor(StringRef VendorName) {
     .Case("nvidia", Triple::NVIDIA)
     .Case("csr", Triple::CSR)
     .Case("myriad", Triple::Myriad)
+    .Case("amd", Triple::AMD)
+    .Case("mesa", Triple::Mesa)
     .Default(Triple::UnknownVendor);
 }
 
@@ -445,6 +450,7 @@ static Triple::OSType parseOS(StringRef OSName) {
     .StartsWith("elfiamcu", Triple::ELFIAMCU)
     .StartsWith("tvos", Triple::TvOS)
     .StartsWith("watchos", Triple::WatchOS)
+    .StartsWith("mesa3d", Triple::Mesa3D)
     .Default(Triple::UnknownOS);
 }
 
@@ -1412,6 +1418,7 @@ StringRef Triple::getARMCPUForArch(StringRef MArch) const {
   case llvm::Triple::MacOSX:
   case llvm::Triple::IOS:
   case llvm::Triple::WatchOS:
+  case llvm::Triple::TvOS:
     if (MArch == "v7k")
       return "cortex-a7";
     break;

@@ -427,7 +427,8 @@ const TargetRegisterClass *SIRegisterInfo::getPhysRegClass(unsigned Reg) const {
     &AMDGPU::VReg_256RegClass,
     &AMDGPU::SReg_256RegClass,
     &AMDGPU::VReg_512RegClass,
-    &AMDGPU::SReg_512RegClass
+    &AMDGPU::SReg_512RegClass,
+    &AMDGPU::SCC_CLASSRegClass,
   };
 
   for (const TargetRegisterClass *BaseClass : BaseClasses) {
@@ -442,6 +443,8 @@ const TargetRegisterClass *SIRegisterInfo::getPhysRegClass(unsigned Reg) const {
 // TargetRegisterClass to mark which classes are VGPRs to make this trivial.
 bool SIRegisterInfo::hasVGPRs(const TargetRegisterClass *RC) const {
   switch (RC->getSize()) {
+  case 0: return false;
+  case 1: return false;
   case 4:
     return getCommonSubClass(&AMDGPU::VGPR_32RegClass, RC) != nullptr;
   case 8:
@@ -649,6 +652,11 @@ unsigned SIRegisterInfo::getPreloadedValue(const MachineFunction &MF,
   case SIRegisterInfo::KERNARG_SEGMENT_PTR:
     assert(MFI->hasKernargSegmentPtr());
     return MFI->KernargSegmentPtrUserSGPR;
+  case SIRegisterInfo::DISPATCH_ID:
+    llvm_unreachable("unimplemented");
+  case SIRegisterInfo::FLAT_SCRATCH_INIT:
+    assert(MFI->hasFlatScratchInit());
+    return MFI->FlatScratchInitUserSGPR;
   case SIRegisterInfo::DISPATCH_PTR:
     assert(MFI->hasDispatchPtr());
     return MFI->DispatchPtrUserSGPR;
