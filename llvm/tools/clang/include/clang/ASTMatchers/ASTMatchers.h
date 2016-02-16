@@ -1856,8 +1856,9 @@ inline internal::Matcher<Stmt> sizeOfExpr(
 /// \code
 ///   namespace a { namespace b { class X; } }
 /// \endcode
-inline internal::Matcher<NamedDecl> hasName(const std::string &Name) {
-  return internal::Matcher<NamedDecl>(new internal::HasNameMatcher(Name));
+inline internal::Matcher<NamedDecl> hasName(std::string Name) {
+  return internal::Matcher<NamedDecl>(
+      new internal::HasNameMatcher(std::move(Name)));
 }
 
 /// \brief Matches NamedDecl nodes whose fully qualified names contain
@@ -3682,6 +3683,19 @@ AST_MATCHER(QualType, isInteger) {
 /// matches "a(char)", "b(wchar_t)", but not "c(double)".
 AST_MATCHER(QualType, isAnyCharacter) {
     return Node->isAnyCharacterType();
+}
+
+//// \brief Matches QualType nodes that are of any pointer type.
+///
+/// Given
+/// \code
+///   int *i = nullptr;
+///   int j;
+/// \endcode
+/// varDecl(hasType(isAnyPointer()))
+///   matches "int *i", but not "int j".
+AST_MATCHER(QualType, isAnyPointer) {
+  return Node->isAnyPointerType();
 }
 
 /// \brief Matches QualType nodes that are const-qualified, i.e., that
