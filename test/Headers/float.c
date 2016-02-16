@@ -3,11 +3,15 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -std=c11 -ffreestanding %s
 // expected-no-diagnostics
 
-// XFAIL: ppc64
-
-/* Basic conformance checks against the N1570 draft of C11 Std. */
+/* Basic floating point conformance checks against:
+    - N1570 draft of C11 Std.
+    - N1256 draft of C99 Std.
+    - http://port70.net/~nsz/c/c89/c89-draft.html draft of C89/C90 Std.
+*/
 /*
-    5.2.4.2.2p11, pp. 30
+    C11,    5.2.4.2.2p11,   pp. 30
+    C99,    5.2.4.2.2p9,    pp. 25
+    C89,    2.2.4.2 
 */
 #include <float.h>
 
@@ -20,17 +24,17 @@
 
 #ifndef FLT_MANT_DIG
     #error "Mandatory macro FLT_MANT_DIG is missing."
-#elif   FLT_MANT_DIG < 1
+#elif   FLT_MANT_DIG < 2
     #error "Mandatory macro FLT_MANT_DIG is invalid."
 #endif
 #ifndef DBL_MANT_DIG
     #error "Mandatory macro DBL_MANT_DIG is missing."
-#elif   DBL_MANT_DIG < 1
+#elif   DBL_MANT_DIG < 2
     #error "Mandatory macro DBL_MANT_DIG is invalid."
 #endif
 #ifndef LDBL_MANT_DIG
     #error "Mandatory macro LDBL_MANT_DIG is missing."
-#elif   LDBL_MANT_DIG < 1
+#elif   LDBL_MANT_DIG < 2
     #error "Mandatory macro LDBL_MANT_DIG is invalid."
 #endif
 #if ((FLT_MANT_DIG > DBL_MANT_DIG) || (DBL_MANT_DIG > LDBL_MANT_DIG))
@@ -70,10 +74,16 @@
 #endif
 
 
-#ifndef DECIMAL_DIG
-    #error "Mandatory macro DECIMAL_DIG is missing."
-#elif   DECIMAL_DIG < 10
-    #error "Mandatory macro DECIMAL_DIG is invalid."
+#if __STDC_VERSION__ >= 199901L || !defined(__STRICT_ANSI__)
+    #ifndef DECIMAL_DIG
+        #error "Mandatory macro DECIMAL_DIG is missing."
+    #elif   DECIMAL_DIG < 10
+        #error "Mandatory macro DECIMAL_DIG is invalid."
+    #endif
+#else
+    #ifdef DECIMAL_DIG
+        #error "Macro DECIMAL_DIG should not be defined."
+    #endif
 #endif
 
 
@@ -98,22 +108,19 @@
 
 
 #ifndef FLT_MIN_EXP
-    #error "Mandatory macro _MIN_EXP is missing."
-#elif   FLT_MIN_EXP > -2
-    #error "Mandatory macro _MIN_EXP is invalid."
+    #error "Mandatory macro FLT_MIN_EXP is missing."
+#elif   FLT_MIN_EXP > -1
+    #error "Mandatory macro FLT_MIN_EXP is invalid."
 #endif
 #ifndef DBL_MIN_EXP
     #error "Mandatory macro DBL_MIN_EXP is missing."
-#elif   DBL_MIN_EXP > -2
+#elif   DBL_MIN_EXP > -1
     #error "Mandatory macro DBL_MIN_EXP is invalid."
 #endif
 #ifndef LDBL_MIN_EXP
     #error "Mandatory macro LDBL_MIN_EXP is missing."
-#elif   LDBL_MIN_EXP > -2
+#elif   LDBL_MIN_EXP > -1
     #error "Mandatory macro LDBL_MIN_EXP is invalid."
-#endif
-#if ((FLT_MIN_EXP < DBL_MIN_EXP) || (DBL_MIN_EXP < LDBL_MIN_EXP))
-    #error "Mandatory macros {FLT,DBL,LDBL}_MIN_EXP are invalid."
 #endif
 
 
@@ -132,24 +139,21 @@
 #elif   LDBL_MIN_10_EXP > -37
     #error "Mandatory macro LDBL_MIN_10_EXP is invalid."
 #endif
-#if ((FLT_MIN_10_EXP < DBL_MIN_10_EXP) || (DBL_MIN_10_EXP < LDBL_MIN_10_EXP))
-    #error "Mandatory macros {FLT,DBL,LDBL}_MIN_10_EXP are invalid."
-#endif
 
 
 #ifndef FLT_MAX_EXP
     #error "Mandatory macro FLT_MAX_EXP is missing."
-#elif   FLT_MAX_EXP < 2
+#elif   FLT_MAX_EXP < 1
     #error "Mandatory macro FLT_MAX_EXP is invalid."
 #endif
 #ifndef DBL_MAX_EXP
     #error "Mandatory macro DBL_MAX_EXP is missing."
-#elif   DBL_MAX_EXP < 2
+#elif   DBL_MAX_EXP < 1
     #error "Mandatory macro DBL_MAX_EXP is invalid."
 #endif
 #ifndef LDBL_MAX_EXP
     #error "Mandatory macro LDBL_MAX_EXP is missing."
-#elif   LDBL_MAX_EXP < 2
+#elif   LDBL_MAX_EXP < 1
     #error "Mandatory macro LDBL_MAX_EXP is invalid."
 #endif
 #if ((FLT_MAX_EXP > DBL_MAX_EXP) || (DBL_MAX_EXP > LDBL_MAX_EXP))
@@ -190,7 +194,9 @@ _Static_assert(DBL_DECIMAL_DIG == __DBL_DECIMAL_DIG__, "");
 _Static_assert(LDBL_DECIMAL_DIG == __LDBL_DECIMAL_DIG__, "");
 #endif
 
+#if __STDC_VERSION__ >= 199901L || !defined(__STRICT_ANSI__)
 _Static_assert(DECIMAL_DIG == __DECIMAL_DIG__, "");
+#endif
 
 _Static_assert(FLT_DIG == __FLT_DIG__, "");
 _Static_assert(DBL_DIG == __DBL_DIG__, "");

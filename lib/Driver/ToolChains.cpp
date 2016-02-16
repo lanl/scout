@@ -65,6 +65,16 @@ types::ID MachO::LookupTypeForExtension(const char *Ext) const {
 
 bool MachO::HasNativeLLVMSupport() const { return true; }
 
+ToolChain::CXXStdlibType Darwin::GetDefaultCXXStdlibType() const {
+  // Default to use libc++ on OS X 10.9+ and iOS 7+.
+  if ((isTargetMacOS() && !isMacosxVersionLT(10, 9)) ||
+       (isTargetIOSBased() && !isIPhoneOSVersionLT(7, 0)) ||
+       isTargetWatchOSBased())
+    return ToolChain::CST_Libcxx;
+
+  return ToolChain::CST_Libstdcxx;
+}
+
 /// Darwin provides an ARC runtime starting in MacOS X 10.7 and iOS 5.0.
 ObjCRuntime Darwin::getDefaultObjCRuntime(bool isNonFragile) const {
   if (isTargetWatchOSBased())
@@ -372,7 +382,6 @@ void Darwin::addProfileRTLibs(const ArgList &Args,
   }
   AddLinkRuntimeLib(Args, CmdArgs, Library,
                     /*AlwaysLink*/ true);
-  return;
 }
 
 void DarwinClang::AddLinkSanitizerLibArgs(const ArgList &Args,
@@ -761,7 +770,6 @@ void DarwinClang::AddCXXStdlibLibArgs(const ArgList &Args,
 
 void DarwinClang::AddCCKextLibArgs(const ArgList &Args,
                                    ArgStringList &CmdArgs) const {
-
   // For Darwin platforms, use the compiler-rt-based support library
   // instead of the gcc-provided one (which is also incidentally
   // only present in the gcc lib dir, which makes it hard to find).
@@ -1051,11 +1059,8 @@ DerivedArgList *Darwin::TranslateArgs(const DerivedArgList &Args,
     }
   }
 
-  // Default to use libc++ on OS X 10.9+ and iOS 7+.
-  if (((isTargetMacOS() && !isMacosxVersionLT(10, 9)) ||
-       (isTargetIOSBased() && !isIPhoneOSVersionLT(7, 0)) ||
-       isTargetWatchOSBased()) &&
-      !Args.getLastArg(options::OPT_stdlib_EQ))
+  if (!Args.getLastArg(options::OPT_stdlib_EQ) &&
+      GetCXXStdlibType(Args) == ToolChain::CST_Libcxx)
     DAL->AddJoinedArg(nullptr, Opts.getOption(options::OPT_stdlib_EQ),
                       "libc++");
 
@@ -2444,7 +2449,6 @@ bool Generic_GCC::addLibStdCXXIncludePaths(
   return true;
 }
 
-
 void Generic_ELF::addClangTargetOptions(const ArgList &DriverArgs,
                                         ArgStringList &CC1Args) const {
   const Generic_GCC::GCCVersion &V = GCCInstallation.getVersion();
@@ -2603,7 +2607,6 @@ std::string HexagonToolChain::getHexagonTargetDir(
   return InstallRelDir;
 }
 
-
 Optional<unsigned> HexagonToolChain::getSmallDataThreshold(
       const ArgList &Args) {
   StringRef Gn = "";
@@ -2621,7 +2624,6 @@ Optional<unsigned> HexagonToolChain::getSmallDataThreshold(
 
   return None;
 }
-
 
 void HexagonToolChain::getHexagonLibraryPaths(const ArgList &Args,
       ToolChain::path_list &LibPaths) const {
@@ -3027,16 +3029,7 @@ Tool *Bitrig::buildAssembler() const {
 
 Tool *Bitrig::buildLinker() const { return new tools::bitrig::Linker(*this); }
 
-ToolChain::CXXStdlibType Bitrig::GetCXXStdlibType(const ArgList &Args) const {
-  if (Arg *A = Args.getLastArg(options::OPT_stdlib_EQ)) {
-    StringRef Value = A->getValue();
-    if (Value == "libstdc++")
-      return ToolChain::CST_Libstdcxx;
-    if (Value == "libc++")
-      return ToolChain::CST_Libcxx;
-
-    getDriver().Diag(diag::err_drv_invalid_stdlib_name) << A->getAsString(Args);
-  }
+ToolChain::CXXStdlibType Bitrig::GetDefaultCXXStdlibType() const {
   return ToolChain::CST_Libcxx;
 }
 
@@ -3135,6 +3128,22 @@ void FreeBSD::AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
   }
 }
 
+void FreeBSD::AddCXXStdlibLibArgs(const ArgList &Args,
+                                  ArgStringList &CmdArgs) const {
+  CXXStdlibType Type = GetCXXStdlibType(Args);
+  bool Profiling = Args.hasArg(options::OPT_pg);
+
+  switch (Type) {
+  case ToolChain::CST_Libcxx:
+    CmdArgs.push_back(Profiling ? "-lc++_p" : "-lc++");
+    break;
+
+  case ToolChain::CST_Libstdcxx:
+    CmdArgs.push_back(Profiling ? "-lstdc++_p" : "-lstdc++");
+    break;
+  }
+}
+
 Tool *FreeBSD::buildAssembler() const {
   return new tools::freebsd::Assembler(*this);
 }
@@ -3181,7 +3190,6 @@ SanitizerMask FreeBSD::getSupportedSanitizers() const {
 
 NetBSD::NetBSD(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
     : Generic_ELF(D, Triple, Args) {
-
   if (getDriver().UseStdLib) {
     // When targeting a 32-bit platform, try the special directory used on
     // 64-bit hosts, and only fall back to the main library directory if that
@@ -3250,7 +3258,7 @@ ToolChain::CXXStdlibType NetBSD::GetCXXStdlibType(const ArgList &Args) const {
 
   unsigned Major, Minor, Micro;
   getTriple().getOSVersion(Major, Minor, Micro);
-  if (Major >= 7 || (Major == 6 && Minor == 99 && Micro >= 49) || Major == 0) {
+  if (Major >= 7 || Major == 0) {
     switch (getArch()) {
     case llvm::Triple::aarch64:
     case llvm::Triple::arm:
@@ -3260,6 +3268,8 @@ ToolChain::CXXStdlibType NetBSD::GetCXXStdlibType(const ArgList &Args) const {
     case llvm::Triple::ppc:
     case llvm::Triple::ppc64:
     case llvm::Triple::ppc64le:
+    case llvm::Triple::sparc:
+    case llvm::Triple::sparcv9:
     case llvm::Triple::x86:
     case llvm::Triple::x86_64:
       return ToolChain::CST_Libcxx;
@@ -4036,7 +4046,6 @@ void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
 
   addExternCSystemInclude(DriverArgs, CC1Args, SysRoot + "/usr/include");
 }
-
 
 static std::string DetectLibcxxIncludePath(StringRef base) {
   std::error_code EC;

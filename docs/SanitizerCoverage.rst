@@ -99,23 +99,24 @@ Sancov Tool
 
 A new experimental ``sancov`` tool is developed to process coverage files.
 The tool is part of LLVM project and is currently supported only on Linux.
-It can handle symbolization tasks autonomously without needed any extra 
-support from environment.
+It can handle symbolization tasks autonomously without any extra support
+from the environment. You need to pass .sancov files (named 
+``<module_name>.<pid>.sancov`` and paths to all corresponding binary elf files. 
+Sancov matches these files using module names and binaries file names.
 
 .. code-block:: console
 
-    USAGE: sancov [options] <action> <filenames...>
+    USAGE: sancov [options] <action> (<binary file>|<.sancov file>)...
 
     Action (required)
       -print                    - Print coverage addresses
-      -covered-functions        - Print all covered funcions.
-      -not-covered-functions    - Print all not covered funcions.
+      -covered-functions        - Print all covered functions.
+      -not-covered-functions    - Print all not covered functions.
       -html-report              - Print HTML coverage report.
 
     Options
       -blacklist=<string>         - Blacklist file (sanitizer blacklist format).
       -demangle                   - Print demangled function name.
-      -obj=<string>               - Path to object file to be symbolized
       -strip_path_prefix=<string> - Strip this prefix from file paths in reports
 
 
