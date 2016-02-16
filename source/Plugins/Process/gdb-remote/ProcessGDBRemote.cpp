@@ -2001,7 +2001,18 @@ ProcessGDBRemote::SetThreadStopInfo (lldb::tid_t tid,
                     {
                         if (reason.compare("trace") == 0)
                         {
-                            thread_sp->SetStopInfo (StopInfo::CreateStopReasonToTrace (*thread_sp));
+                            addr_t pc = thread_sp->GetRegisterContext()->GetPC();
+                            lldb::BreakpointSiteSP bp_site_sp = thread_sp->GetProcess()->GetBreakpointSiteList().FindByAddress(pc);
+
+                            // If the current pc is a breakpoint site then the StopInfo should be set to Breakpoint
+                            // Otherwise, it will be set to Trace.
+                            if (bp_site_sp && bp_site_sp->ValidForThisThread(thread_sp.get()))
+                            {
+                                thread_sp->SetStopInfo(
+                                    StopInfo::CreateStopReasonWithBreakpointSiteID(*thread_sp, bp_site_sp->GetID()));
+                            }
+                            else
+                              thread_sp->SetStopInfo (StopInfo::CreateStopReasonToTrace (*thread_sp));
                             handled = true;
                         }
                         else if (reason.compare("breakpoint") == 0)

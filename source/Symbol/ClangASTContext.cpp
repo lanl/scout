@@ -105,7 +105,8 @@ namespace
         return language == eLanguageTypeUnknown || // Clang is the default type system
                Language::LanguageIsC (language) ||
                Language::LanguageIsCPlusPlus (language) ||
-               Language::LanguageIsObjC (language);
+               Language::LanguageIsObjC (language) ||
+               language == eLanguageTypeExtRenderScript;
     }
 }
 
@@ -332,22 +333,7 @@ ClangASTContext::ClangASTContext (const char *target_triple) :
 //----------------------------------------------------------------------
 ClangASTContext::~ClangASTContext()
 {
-    if (m_ast_ap.get())
-    {
-        GetASTMap().Erase(m_ast_ap.get());
-        if (!m_ast_owned)
-            m_ast_ap.release();
-    }
-
-    m_builtins_ap.reset();
-    m_selector_table_ap.reset();
-    m_identifier_table_ap.reset();
-    m_target_info_ap.reset();
-    m_target_options_rp.reset();
-    m_diagnostics_engine_ap.reset();
-    m_source_manager_ap.reset();
-    m_language_options_ap.reset();
-    m_ast_ap.reset();
+    Finalize();
 }
 
 ConstString
@@ -471,6 +457,27 @@ ClangASTContext::Terminate()
     PluginManager::UnregisterPlugin (CreateInstance);
 }
 
+void
+ClangASTContext::Finalize()
+{
+    if (m_ast_ap.get())
+    {
+        GetASTMap().Erase(m_ast_ap.get());
+        if (!m_ast_owned)
+            m_ast_ap.release();
+    }
+
+    m_builtins_ap.reset();
+    m_selector_table_ap.reset();
+    m_identifier_table_ap.reset();
+    m_target_info_ap.reset();
+    m_target_options_rp.reset();
+    m_diagnostics_engine_ap.reset();
+    m_source_manager_ap.reset();
+    m_language_options_ap.reset();
+    m_ast_ap.reset();
+    m_scratch_ast_source_ap.reset();
+}
 
 void
 ClangASTContext::Clear()
@@ -1884,6 +1891,17 @@ ClangASTContext::GetUniqueNamespaceDeclaration (const char *name, DeclContext *d
     return namespace_decl;
 }
 
+NamespaceDecl *
+ClangASTContext::GetUniqueNamespaceDeclaration (clang::ASTContext *ast,
+                                                const char *name,
+                                                clang::DeclContext *decl_ctx)
+{
+    ClangASTContext *ast_ctx = ClangASTContext::GetASTContext(ast);
+    if (ast_ctx == nullptr)
+        return nullptr;
+
+    return ast_ctx->GetUniqueNamespaceDeclaration(name, decl_ctx);
+}
 
 clang::BlockDecl *
 ClangASTContext::CreateBlockDeclaration (clang::DeclContext *ctx)
@@ -2105,14 +2123,14 @@ ClangASTContext::CreateArrayType (const CompilerType &element_type,
             if (element_count == 0)
             {
                 return CompilerType (ast, ast->getIncompleteArrayType (GetQualType(element_type),
-                                                                       ArrayType::Normal,
+                                                                       clang::ArrayType::Normal,
                                                                        0));
             }
             else
             {
                 return CompilerType (ast, ast->getConstantArrayType (GetQualType(element_type),
                                                                      ap_element_count,
-                                                                     ArrayType::Normal,
+                                                                     clang::ArrayType::Normal,
                                                                      0));
             }
         }
@@ -4710,7 +4728,7 @@ ClangASTContext::GetBitSize (lldb::opaque_compiler_type_t type, ExecutionContext
                     }
                 }
             }
-                // fallthrough
+                LLVM_FALLTHROUGH;
             default:
                 const uint32_t bit_size = getASTContext()->getTypeSize (qual_type);
                 if (bit_size == 0)
@@ -9281,6 +9299,7 @@ ClangASTContext::DumpTypeValue (lldb::opaque_compiler_type_t type, Stream *s,
                     return true;
                 }
                 // format was not enum, just fall through and dump the value as requested....
+                LLVM_FALLTHROUGH;
                 
             default:
                 // We are down to a scalar type that we just need to display.
@@ -9780,7 +9799,9 @@ ClangASTContext::DeclGetFunctionArgumentType (void *opaque_decl, size_t idx)
 //----------------------------------------------------------------------
 
 std::vector<CompilerDecl>
-ClangASTContext::DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString name)
+ClangASTContext::DeclContextFindDeclByName(void *opaque_decl_ctx,
+                                           ConstString name,
+                                           const bool ignore_using_decls)
 {
     std::vector<CompilerDecl> found_decls;
     if (opaque_decl_ctx)
@@ -9804,12 +9825,16 @@ ClangASTContext::DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString na
                 {
                     if (clang::UsingDirectiveDecl *ud = llvm::dyn_cast<clang::UsingDirectiveDecl>(child))
                     {
+                        if (ignore_using_decls)
+                            continue;
                         clang::DeclContext *from = ud->getCommonAncestor();
                         if (searched.find(ud->getNominatedNamespace()) == searched.end())
                             search_queue.insert(std::make_pair(from, ud->getNominatedNamespace()));
                     }
                     else if (clang::UsingDecl *ud = llvm::dyn_cast<clang::UsingDecl>(child))
                     {
+                        if (ignore_using_decls)
+                            continue;
                         for (clang::UsingShadowDecl *usd : ud->shadows())
                         {
                             clang::Decl *target = usd->getTargetDecl();
@@ -9902,6 +9927,15 @@ ClangASTContext::CountDeclLevels (clang::DeclContext *frame_decl_ctx,
             {
                 if (searched.find(it->second) != searched.end())
                     continue;
+                
+                // Currently DWARF has one shared translation unit for all Decls at top level, so this
+                // would erroneously find using statements anywhere.  So don't look at the top-level
+                // translation unit.
+                // TODO fix this and add a testcase that depends on it.
+                
+                if (llvm::isa<clang::TranslationUnitDecl>(it->second))
+                    continue;
+                
                 searched.insert(it->second);
                 symbol_file->ParseDeclsForContext(CompilerDeclContext(this, it->second));
 

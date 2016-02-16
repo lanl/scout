@@ -15,6 +15,7 @@
 // C++ Includes
 // Other libraries and framework includes
 #include "clang/AST/Decl.h"
+
 // Project includes
 #include "lldb/Core/DataBufferHeap.h"
 #include "lldb/Core/DataExtractor.h"
@@ -35,10 +36,13 @@
 #include "lldb/Interpreter/OptionValueString.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/TypeList.h"
+#include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Target/MemoryHistory.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Thread.h"
+
+#include "lldb/lldb-private.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -487,7 +491,7 @@ protected:
                     {
                     case '*':
                         ++pointer_count;
-                        // fall through...
+                        LLVM_FALLTHROUGH;
                     case ' ':
                     case '\t':
                         type_str.erase(type_str.size()-1);
@@ -514,6 +518,7 @@ protected:
                 }
             }
                     
+            llvm::DenseSet<lldb_private::SymbolFile *> searched_symbol_files;
             ConstString lookup_type_name(type_str.c_str());
             StackFrame *frame = m_exe_ctx.GetFramePtr();
             if (frame)
@@ -524,7 +529,8 @@ protected:
                     sc.module_sp->FindTypes (sc,
                                              lookup_type_name,
                                              exact_match,
-                                             1, 
+                                             1,
+                                             searched_symbol_files,
                                              type_list);
                 }
             }
@@ -533,7 +539,8 @@ protected:
                 target->GetImages().FindTypes (sc, 
                                                lookup_type_name, 
                                                exact_match, 
-                                               1, 
+                                               1,
+                                               searched_symbol_files,
                                                type_list);
             }
 
