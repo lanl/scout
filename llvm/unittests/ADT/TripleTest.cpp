@@ -224,6 +224,18 @@ TEST(TripleTest, ParsedIDs) {
   EXPECT_EQ(Triple::UnknownOS, T.getOS());
   EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
 
+  T = Triple("amdgcn-mesa-mesa3d");
+  EXPECT_EQ(Triple::amdgcn, T.getArch());
+  EXPECT_EQ(Triple::Mesa, T.getVendor());
+  EXPECT_EQ(Triple::Mesa3D, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+
+  T = Triple("amdgcn-amd-amdhsa");
+  EXPECT_EQ(Triple::amdgcn, T.getArch());
+  EXPECT_EQ(Triple::AMD, T.getVendor());
+  EXPECT_EQ(Triple::AMDHSA, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+
   T = Triple("huh");
   EXPECT_EQ(Triple::UnknownArch, T.getArch());
 }
@@ -981,6 +993,18 @@ TEST(TripleTest, getARMCPUForArch) {
   {
     llvm::Triple Triple("armv7s-apple-ios7");
     EXPECT_EQ("swift", Triple.getARMCPUForArch());
+  }
+  {
+    llvm::Triple Triple("armv7k-apple-ios9");
+    EXPECT_EQ("cortex-a7", Triple.getARMCPUForArch());
+  }
+  {
+    llvm::Triple Triple("armv7k-apple-watchos3");
+    EXPECT_EQ("cortex-a7", Triple.getARMCPUForArch());
+  }
+  {
+    llvm::Triple Triple("armv7k-apple-tvos9");
+    EXPECT_EQ("cortex-a7", Triple.getARMCPUForArch());
   }
   {
     llvm::Triple Triple("armv7em-apple-ios7");

@@ -61,6 +61,8 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
   setOperationAction(ISD::GlobalAddress, MVTPtr, Custom);
   setOperationAction(ISD::ExternalSymbol, MVTPtr, Custom);
   setOperationAction(ISD::JumpTable, MVTPtr, Custom);
+  setOperationAction(ISD::BlockAddress, MVTPtr, Custom);
+  setOperationAction(ISD::BRIND, MVT::Other, Custom);
 
   // Take the default expansion for va_arg, va_copy, and va_end. There is no
   // default action for va_start, so we do that custom.
@@ -112,6 +114,7 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVTPtr, Expand);
 
   setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
+  setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
 
   // Expand these forms; we pattern-match the forms that we can handle in isel.
   for (auto T : {MVT::i32, MVT::i64, MVT::f32, MVT::f64})
@@ -308,9 +311,8 @@ SDValue WebAssemblyTargetLowering::LowerCall(
       fail(DL, DAG, "WebAssembly hasn't implemented cons regs arguments");
     if (Out.Flags.isInConsecutiveRegsLast())
       fail(DL, DAG, "WebAssembly hasn't implemented cons regs last arguments");
-    if (Out.Flags.isByVal()) {
+    if (Out.Flags.isByVal() && Out.Flags.getByValSize() != 0) {
       auto *MFI = MF.getFrameInfo();
-      assert(Out.Flags.getByValSize() && "Zero-size byval?");
       int FI = MFI->CreateStackObject(Out.Flags.getByValSize(),
                                       Out.Flags.getByValAlign(),
                                       /*isSS=*/false);
@@ -516,6 +518,7 @@ SDValue WebAssemblyTargetLowering::LowerFormalArguments(
 
 SDValue WebAssemblyTargetLowering::LowerOperation(SDValue Op,
                                                   SelectionDAG &DAG) const {
+  SDLoc DL(Op);
   switch (Op.getOpcode()) {
     default:
       llvm_unreachable("unimplemented operation lowering");
@@ -532,7 +535,42 @@ SDValue WebAssemblyTargetLowering::LowerOperation(SDValue Op,
       return LowerBR_JT(Op, DAG);
     case ISD::VASTART:
       return LowerVASTART(Op, DAG);
+    case ISD::BlockAddress:
+    case ISD::BRIND:
+      fail(DL, DAG, "WebAssembly hasn't implemented computed gotos");
+      return SDValue();
+    case ISD::RETURNADDR: // Probably nothing meaningful can be returned here.
+      fail(DL, DAG, "WebAssembly hasn't implemented __builtin_return_address");
+      return SDValue();
+    case ISD::FRAMEADDR: // TODO: Make this return the userspace frame address
+      fail(DL, DAG, "WebAssembly hasn't implemented __builtin_frame_address");
+      return SDValue();
+    case ISD::CopyToReg:
+      return LowerCopyToReg(Op, DAG);
   }
+}
+
+SDValue WebAssemblyTargetLowering::LowerCopyToReg(SDValue Op,
+                                                  SelectionDAG &DAG) const {
+  SDValue Src = Op.getOperand(2);
+  if (isa<FrameIndexSDNode>(Src.getNode())) {
+    // CopyToReg nodes don't support FrameIndex operands. Other targets select
+    // the FI to some LEA-like instruction, but since we don't have that, we
+    // need to insert some kind of instruction that can take an FI operand and
+    // produces a value usable by CopyToReg (i.e. in a vreg). So insert a dummy
+    // copy_local between Op and its FI operand.
+    SDLoc DL(Op);
+    EVT VT = Src.getValueType();
+    SDValue Copy(
+        DAG.getMachineNode(VT == MVT::i32 ? WebAssembly::COPY_LOCAL_I32
+                                          : WebAssembly::COPY_LOCAL_I64,
+                           DL, VT, Src),
+        0);
+    return DAG.getCopyToReg(Op.getOperand(0), DL,
+                            cast<RegisterSDNode>(Op.getOperand(1))->getReg(),
+                            Copy);
+  }
+  return SDValue();
 }
 
 SDValue WebAssemblyTargetLowering::LowerFrameIndex(SDValue Op,

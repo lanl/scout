@@ -59,6 +59,9 @@ private:
     unsigned Reg, MachineRegisterInfo &MRI,
     SmallVectorImpl<MachineInstr *> &Worklist) const;
 
+  void addSCCDefUsersToVALUWorklist(
+    MachineInstr *SCCDefInst, SmallVectorImpl<MachineInstr *> &Worklist) const;
+
   const TargetRegisterClass *
   getDestEquivalentVGPRClass(const MachineInstr &Inst) const;
 
@@ -489,7 +492,7 @@ namespace AMDGPU {
 
   const uint64_t RSRC_DATA_FORMAT = 0xf00000000000LL;
   const uint64_t RSRC_TID_ENABLE = 1LL << 55;
-
+  const uint64_t RSRC_ELEMENT_SIZE_SHIFT = 51;
 } // End namespace AMDGPU
 
 namespace SI {

@@ -336,18 +336,18 @@ defm S_ABSDIFF_I32 : SOP2_32 <sop2<0x2c, 0x2a>, "s_absdiff_i32", []>;
 // SOPC Instructions
 //===----------------------------------------------------------------------===//
 
-def S_CMP_EQ_I32 : SOPC_32 <0x00000000, "s_cmp_eq_i32">;
-def S_CMP_LG_I32 : SOPC_32 <0x00000001, "s_cmp_lg_i32">;
-def S_CMP_GT_I32 : SOPC_32 <0x00000002, "s_cmp_gt_i32">;
-def S_CMP_GE_I32 : SOPC_32 <0x00000003, "s_cmp_ge_i32">;
-def S_CMP_LT_I32 : SOPC_32 <0x00000004, "s_cmp_lt_i32">;
-def S_CMP_LE_I32 : SOPC_32 <0x00000005, "s_cmp_le_i32">;
-def S_CMP_EQ_U32 : SOPC_32 <0x00000006, "s_cmp_eq_u32">;
-def S_CMP_LG_U32 : SOPC_32 <0x00000007, "s_cmp_lg_u32">;
-def S_CMP_GT_U32 : SOPC_32 <0x00000008, "s_cmp_gt_u32">;
-def S_CMP_GE_U32 : SOPC_32 <0x00000009, "s_cmp_ge_u32">;
-def S_CMP_LT_U32 : SOPC_32 <0x0000000a, "s_cmp_lt_u32">;
-def S_CMP_LE_U32 : SOPC_32 <0x0000000b, "s_cmp_le_u32">;
+def S_CMP_EQ_I32 : SOPC_32 <0x00000000, "s_cmp_eq_i32", COND_EQ>;
+def S_CMP_LG_I32 : SOPC_32 <0x00000001, "s_cmp_lg_i32", COND_NE>;
+def S_CMP_GT_I32 : SOPC_32 <0x00000002, "s_cmp_gt_i32", COND_SGT>;
+def S_CMP_GE_I32 : SOPC_32 <0x00000003, "s_cmp_ge_i32", COND_SGE>;
+def S_CMP_LT_I32 : SOPC_32 <0x00000004, "s_cmp_lt_i32", COND_SLT>;
+def S_CMP_LE_I32 : SOPC_32 <0x00000005, "s_cmp_le_i32", COND_SLE>;
+def S_CMP_EQ_U32 : SOPC_32 <0x00000006, "s_cmp_eq_u32", COND_EQ>;
+def S_CMP_LG_U32 : SOPC_32 <0x00000007, "s_cmp_lg_u32", COND_NE >;
+def S_CMP_GT_U32 : SOPC_32 <0x00000008, "s_cmp_gt_u32", COND_UGT>;
+def S_CMP_GE_U32 : SOPC_32 <0x00000009, "s_cmp_ge_u32", COND_UGE>;
+def S_CMP_LT_U32 : SOPC_32 <0x0000000a, "s_cmp_lt_u32", COND_ULT>;
+def S_CMP_LE_U32 : SOPC_32 <0x0000000b, "s_cmp_le_u32", COND_ULE>;
 ////def S_BITCMP0_B32 : SOPC_BITCMP0 <0x0000000c, "s_bitcmp0_b32", []>;
 ////def S_BITCMP1_B32 : SOPC_BITCMP1 <0x0000000d, "s_bitcmp1_b32", []>;
 ////def S_BITCMP0_B64 : SOPC_BITCMP0 <0x0000000e, "s_bitcmp0_b64", []>;
@@ -449,7 +449,8 @@ def S_CBRANCH_SCC0 : SOPP <
 >;
 def S_CBRANCH_SCC1 : SOPP <
   0x00000005, (ins sopp_brtarget:$simm16),
-  "s_cbranch_scc1 $simm16"
+  "s_cbranch_scc1 $simm16",
+  [(si_uniform_br_scc SCC, bb:$simm16)]
 >;
 } // End Uses = [SCC]
 
@@ -1348,11 +1349,12 @@ let SubtargetPredicate = isSICI in {
 let SchedRW = [WriteQuarterRate32] in {
 
 defm V_MOV_FED_B32 : VOP1InstSI <vop1<0x9>, "v_mov_fed_b32", VOP_I32_I32>;
-defm V_LOG_CLAMP_F32 : VOP1InstSI <vop1<0x26>, "v_log_clamp_f32", VOP_F32_F32>;
+defm V_LOG_CLAMP_F32 : VOP1InstSI <vop1<0x26>, "v_log_clamp_f32",
+  VOP_F32_F32, int_amdgcn_log_clamp>;
 defm V_RCP_CLAMP_F32 : VOP1InstSI <vop1<0x28>, "v_rcp_clamp_f32", VOP_F32_F32>;
 defm V_RCP_LEGACY_F32 : VOP1InstSI <vop1<0x29>, "v_rcp_legacy_f32", VOP_F32_F32>;
 defm V_RSQ_CLAMP_F32 : VOP1InstSI <vop1<0x2c>, "v_rsq_clamp_f32",
-  VOP_F32_F32, AMDGPUrsq_clamped
+  VOP_F32_F32, AMDGPUrsq_clamp
 >;
 defm V_RSQ_LEGACY_F32 : VOP1InstSI <vop1<0x2d>, "v_rsq_legacy_f32",
   VOP_F32_F32, AMDGPUrsq_legacy
@@ -1364,7 +1366,7 @@ let SchedRW = [WriteDouble] in {
 
 defm V_RCP_CLAMP_F64 : VOP1InstSI <vop1<0x30>, "v_rcp_clamp_f64", VOP_F64_F64>;
 defm V_RSQ_CLAMP_F64 : VOP1InstSI <vop1<0x32>, "v_rsq_clamp_f64",
-  VOP_F64_F64, AMDGPUrsq_clamped
+  VOP_F64_F64, AMDGPUrsq_clamp
 >;
 
 } // End SchedRW = [WriteDouble]
@@ -1501,7 +1503,7 @@ defm V_AND_B32 : VOP2Inst <vop2<0x1b, 0x13>, "v_and_b32", VOP_I32_I32_I32>;
 defm V_OR_B32 : VOP2Inst <vop2<0x1c, 0x14>, "v_or_b32", VOP_I32_I32_I32>;
 defm V_XOR_B32 : VOP2Inst <vop2<0x1d, 0x15>, "v_xor_b32", VOP_I32_I32_I32>;
 
-let Constraints = "$dst = $src2", DisableEncoding="$src2",
+let Constraints = "$vdst = $src2", DisableEncoding="$src2",
     isConvertibleToThreeAddress = 1 in {
 defm V_MAC_F32 : VOP2Inst <vop2<0x1f, 0x16>, "v_mac_f32", VOP_MAC>;
 }
@@ -1848,14 +1850,14 @@ defm V_ASHRREV_I64 : VOP3Inst <vop3<0, 0x291>, "v_ashrrev_i64",
 let isCodeGenOnly = 1, isPseudo = 1 in {
 
 // For use in patterns
-def V_CNDMASK_B64_PSEUDO : VOP3Common <(outs VReg_64:$dst),
+def V_CNDMASK_B64_PSEUDO : VOP3Common <(outs VReg_64:$vdst),
   (ins VSrc_64:$src0, VSrc_64:$src1, SSrc_64:$src2), "", []
 >;
 
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, Uses = [EXEC] in {
 // 64-bit vector move instruction.  This is mainly used by the SIFoldOperands
 // pass to enable folding of inline immediates.
-def V_MOV_B64_PSEUDO : InstSI <(outs VReg_64:$dst), (ins VSrc_64:$src0), "", []>;
+def V_MOV_B64_PSEUDO : InstSI <(outs VReg_64:$vdst), (ins VSrc_64:$src0), "", []>;
 } // End let hasSideEffects = 0, mayLoad = 0, mayStore = 0
 
 let hasSideEffects = 1, SALU = 1 in {
@@ -2130,7 +2132,7 @@ def : Pat <
 def : Pat <
   (i64 (ctpop i64:$src)),
     (i64 (REG_SEQUENCE SReg_64,
-     (S_BCNT1_I32_B64 $src), sub0,
+     (i32 (COPY_TO_REGCLASS (S_BCNT1_I32_B64 $src), SReg_32)), sub0,
      (S_MOV_B32 0), sub1))
 >;
 
@@ -3030,10 +3032,12 @@ def : ZExt_i64_i32_Pat<anyext>;
 def : ZExt_i64_i1_Pat<zext>;
 def : ZExt_i64_i1_Pat<anyext>;
 
+// FIXME: We need to use COPY_TO_REGCLASS to work-around the fact that
+// REG_SEQUENCE patterns don't support instructions with multiple outputs.
 def : Pat <
   (i64 (sext i32:$src)),
     (REG_SEQUENCE SReg_64, $src, sub0,
-    (S_ASHR_I32 $src, 31), sub1)
+    (i32 (COPY_TO_REGCLASS (S_ASHR_I32 $src, 31), SGPR_32)), sub1)
 >;
 
 def : Pat <
