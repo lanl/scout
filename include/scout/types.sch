@@ -63,11 +63,11 @@
 //   http://clang.llvm.org/docs/LanguageExtensions.html
 //
 // +--- Support for 2,4,8,16 width vector types -----------------------------+
-typedef bool bool16                  __attribute__((ext_vector_type(16)));
-typedef bool bool8                   __attribute__((ext_vector_type(8)));
-typedef bool bool4                   __attribute__((ext_vector_type(4)));
-typedef bool bool3                   __attribute__((ext_vector_type(3)));
-typedef bool bool2                   __attribute__((ext_vector_type(2)));
+//typedef bool bool16                  __attribute__((ext_vector_type(16)));
+//typedef bool bool8                   __attribute__((ext_vector_type(8)));
+//typedef bool bool4                   __attribute__((ext_vector_type(4)));
+//typedef bool bool3                   __attribute__((ext_vector_type(3)));
+//typedef bool bool2                   __attribute__((ext_vector_type(2)));
 typedef char char16                  __attribute__((ext_vector_type(16)));
 typedef char char8                   __attribute__((ext_vector_type(8)));
 typedef char char4                   __attribute__((ext_vector_type(4)));

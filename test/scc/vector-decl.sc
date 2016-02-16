@@ -55,9 +55,9 @@
 #include <stdio.h>
 
 int main(int argc, char** argv){
-  bool2 v1;
-  bool3 v2;
-  bool4 v3;
+//  bool2 v1;
+//  bool3 v2;
+//  bool4 v3;
   char2 v4;
   char3 v5;
   char4 v6;
