@@ -151,7 +151,6 @@ public:
     return true;
   }
 
-<<<<<<< HEAD
   // +==== Scout =============================================================+
   // SC_TODO - implement these…
   //
@@ -197,7 +196,7 @@ public:
   //bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){ return true; }
 
   // +========================================================================+
-=======
+
   // RecursiveASTVisitor visits both syntactic and semantic forms, duplicating
   // the things that we visit. Make sure to only visit the semantic form.
   // Also visit things that are in the syntactic form but not the semantic one,
@@ -256,7 +255,6 @@ public:
     return true;
   }
 
->>>>>>> 0042522e4c71100ebef3fcaad2c12d41b74bb4ae
 };
 
 } // anonymous namespace

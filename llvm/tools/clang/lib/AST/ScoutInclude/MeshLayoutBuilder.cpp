@@ -298,11 +298,11 @@ void MeshLayoutBuilder::LayoutWideBitField(uint64_t FieldSize,
 
   // The bitfield is allocated starting at the next offset aligned
   // appropriately for T', with length n bits.
-  FieldOffset = llvm::RoundUpToAlignment(getDataSizeInBits(),
+  FieldOffset = llvm::alignTo(getDataSizeInBits(),
                                          Context.toBits(TypeAlign));
 
   uint64_t NewSizeInBits = FieldOffset + FieldSize;
-  setDataSize(llvm::RoundUpToAlignment(NewSizeInBits,
+  setDataSize(llvm::alignTo(NewSizeInBits,
                                        Context.getTargetInfo().getCharAlign()));
   UnfilledBitsInLastByte = getDataSizeInBits() - NewSizeInBits;
 
@@ -370,12 +370,12 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   if (FieldSize == 0 ||
       (MaxFieldAlignment.isZero() &&
        (FieldOffset & (FieldAlign-1)) + FieldSize > TypeSize))
-    FieldOffset = llvm::RoundUpToAlignment(FieldOffset, FieldAlign);
+    FieldOffset = llvm::alignTo(FieldOffset, FieldAlign);
 
   if (FieldSize == 0 ||
       (MaxFieldAlignment.isZero() &&
        (UnpackedFieldOffset & (UnpackedFieldAlign-1)) + FieldSize > TypeSize))
-    UnpackedFieldOffset = llvm::RoundUpToAlignment(UnpackedFieldOffset,
+    UnpackedFieldOffset = llvm::alignTo(UnpackedFieldOffset,
                                                    UnpackedFieldAlign);
 
   // Padding members don't affect overall alignment, unless zero length bitfield
@@ -398,7 +398,7 @@ void MeshLayoutBuilder::LayoutBitField(const MeshFieldDecl *D) {
   // Update DataSize to include the last byte containing (part of) the bitfield.
   uint64_t NewSizeInBits = FieldOffset + FieldSize;
 
-  setDataSize(llvm::RoundUpToAlignment(NewSizeInBits,
+  setDataSize(llvm::alignTo(NewSizeInBits,
                                        Context.getTargetInfo().getCharAlign()));
   UnfilledBitsInLastByte = getDataSizeInBits() - NewSizeInBits;
 
@@ -490,9 +490,9 @@ void MeshLayoutBuilder::LayoutField(const MeshFieldDecl *D) {
   }
 
   // Round up the current record size to the field's alignment boundary.
-  FieldOffset = FieldOffset.RoundUpToAlignment(FieldAlign);
+  FieldOffset = FieldOffset.alignTo(FieldAlign);
   UnpackedFieldOffset =
-    UnpackedFieldOffset.RoundUpToAlignment(UnpackedFieldAlign);
+    UnpackedFieldOffset.alignTo(UnpackedFieldAlign);
 
   if (ExternalLayout) {
     FieldOffset = Context.toCharUnitsFromBits(
@@ -550,11 +550,11 @@ void MeshLayoutBuilder::FinishLayout(const NamedDecl *D) {
   // record itself.
   uint64_t UnpaddedSize = getSizeInBits() - UnfilledBitsInLastByte;
   uint64_t UnpackedSizeInBits =
-  llvm::RoundUpToAlignment(getSizeInBits(),
+  llvm::alignTo(getSizeInBits(),
                            Context.toBits(UnpackedAlignment));
   CharUnits UnpackedSize = Context.toCharUnitsFromBits(UnpackedSizeInBits);
   uint64_t RoundedSize
-    = llvm::RoundUpToAlignment(getSizeInBits(), Context.toBits(Alignment));
+    = llvm::alignTo(getSizeInBits(), Context.toBits(Alignment));
 
   if (ExternalLayout) {
     // If we're inferring alignment, and the external size is smaller than

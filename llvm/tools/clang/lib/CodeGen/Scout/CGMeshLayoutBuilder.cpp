@@ -171,7 +171,7 @@ bool CGMeshLayoutBuilder::LayoutField(const MeshFieldDecl *D,
 
   // Round up the field offset to the alignment of the field type.
   CharUnits alignedNextFieldOffsetInBytes =
-    NextFieldOffset.RoundUpToAlignment(typeAlignment);
+    NextFieldOffset.alignTo(typeAlignment);
 
   if (fieldOffsetInBytes < alignedNextFieldOffsetInBytes) {
     assert(!Packed && "Could not place field even with packed struct!");
@@ -216,7 +216,7 @@ void CGMeshLayoutBuilder::AppendTailPadding(CharUnits RecordSize) {
   assert(NextFieldOffset <= RecordSize && "Size mismatch!");
 
   CharUnits AlignedNextFieldOffset =
-    NextFieldOffset.RoundUpToAlignment(getAlignmentAsLLVMStruct());
+    NextFieldOffset.alignTo(getAlignmentAsLLVMStruct());
 
   if (AlignedNextFieldOffset == RecordSize) {
     // We don't need any padding.
@@ -250,7 +250,7 @@ void CGMeshLayoutBuilder::AppendPadding(CharUnits fieldOffset,
   if (!Packed) {
     // Round up the field offset to the alignment of the field type.
     CharUnits alignedNextFieldOffset =
-      NextFieldOffset.RoundUpToAlignment(fieldAlignment);
+      NextFieldOffset.alignTo(fieldAlignment);
     assert(alignedNextFieldOffset <= fieldOffset);
 
     // If that's the right offset, we're done.

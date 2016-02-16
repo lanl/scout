@@ -84,10 +84,10 @@
 using namespace clang;
 using namespace clang::CodeGen;
 
-static bool shouldOmitDefinition(CodeGenOptions::DebugInfoKind DebugKind,
+static bool shouldOmitDefinition(codegenoptions::DebugInfoKind DebugKind,
                                  const MeshDecl *MD,
                                  const LangOptions &LangOpts) {
-  if (DebugKind > CodeGenOptions::LimitedDebugInfo)
+  if (DebugKind > codegenoptions::LimitedDebugInfo)
     return false;
   
   if (!LangOpts.CPlusPlus)
@@ -99,10 +99,10 @@ static bool shouldOmitDefinition(CodeGenOptions::DebugInfoKind DebugKind,
   return false;
 }
 
-static bool shouldOmitDefinition(CodeGenOptions::DebugInfoKind DebugKind,
+static bool shouldOmitDefinition(codegenoptions::DebugInfoKind DebugKind,
                                  const FrameDecl *FD,
                                  const LangOptions &LangOpts) {
-  if (DebugKind > CodeGenOptions::LimitedDebugInfo)
+  if (DebugKind > codegenoptions::LimitedDebugInfo)
     return false;
   
   if (!LangOpts.CPlusPlus)
@@ -160,7 +160,7 @@ getUniqueFrameTypeName(const FrameType *Ty, CodeGenModule &CGM,
 }
 
 void CGDebugInfo::completeType(const MeshDecl *MD) {
-  if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
+  if (DebugKind > codegenoptions::LimitedDebugInfo ||
       !CGM.getLangOpts().CPlusPlus) {
     if(const UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(MD))
       completeRequiredType(UMD);
@@ -176,14 +176,14 @@ void CGDebugInfo::completeType(const MeshDecl *MD) {
 }
 
 void CGDebugInfo::completeType(const FrameDecl *FD) {
-  if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
+  if (DebugKind > codegenoptions::LimitedDebugInfo ||
       !CGM.getLangOpts().CPlusPlus) {
       completeRequiredType(FD);
   }
 }
 
 void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   
   QualType Ty = CGM.getContext().getUniformMeshType(MD);
@@ -193,7 +193,7 @@ void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeRequiredType(const ALEMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   
   QualType Ty = CGM.getContext().getALEMeshType(MD);
@@ -202,7 +202,7 @@ void CGDebugInfo::completeRequiredType(const ALEMeshDecl *MD) {
     completeClassData(MD);
 }
 void CGDebugInfo::completeRequiredType(const RectilinearMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   
   QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
@@ -212,7 +212,7 @@ void CGDebugInfo::completeRequiredType(const RectilinearMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeRequiredType(const StructuredMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   
   QualType Ty = CGM.getContext().getStructuredMeshType(MD);
@@ -223,7 +223,7 @@ void CGDebugInfo::completeRequiredType(const StructuredMeshDecl *MD) {
 
 
 void CGDebugInfo::completeRequiredType(const UnstructuredMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   
   QualType Ty = CGM.getContext().getUnstructuredMeshType(MD);
@@ -233,7 +233,7 @@ void CGDebugInfo::completeRequiredType(const UnstructuredMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeRequiredType(const FrameDecl *FD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   
   QualType Ty = CGM.getContext().getFrameType(FD);
@@ -243,7 +243,7 @@ void CGDebugInfo::completeRequiredType(const FrameDecl *FD) {
 }
 
 void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   QualType Ty = CGM.getContext().getUniformMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
@@ -257,7 +257,7 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeClassData(const ALEMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   QualType Ty = CGM.getContext().getALEMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
@@ -271,7 +271,7 @@ void CGDebugInfo::completeClassData(const ALEMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
@@ -285,7 +285,7 @@ void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   QualType Ty = CGM.getContext().getStructuredMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
@@ -299,7 +299,7 @@ void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   QualType Ty = CGM.getContext().getUnstructuredMeshType(MD);
   void* TyPtr = Ty.getAsOpaquePtr();
@@ -313,7 +313,7 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
 }
 
 void CGDebugInfo::completeClassData(const FrameDecl *FD) {
-  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+  if (DebugKind <= codegenoptions::DebugLineTablesOnly)
     return;
   QualType Ty = CGM.getContext().getFrameType(FD);
   void* TyPtr = Ty.getAsOpaquePtr();

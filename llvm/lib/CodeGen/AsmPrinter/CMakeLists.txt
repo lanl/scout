@@ -25,7 +25,6 @@ add_llvm_library(LLVMAsmPrinter
   ErlangGCPrinter.cpp
   OcamlGCPrinter.cpp
   WinException.cpp
-  WinCodeViewLineTables.cpp
   CodeViewDebug.cpp
 # +===== Scout =====================
   LINK_LIBS

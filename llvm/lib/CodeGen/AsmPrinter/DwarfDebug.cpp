@@ -1959,21 +1959,19 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
   if (!ScoutTypeUnitsUnderConstruction.empty() && AddrPool.hasBeenUsed())
     return;
   
-  const DwarfTypeUnit *&TU = DwarfTypeUnits[CTy];
-  if (TU) {
-    CU.addDIETypeSignature(RefDie, *TU);
+  auto Ins = TypeSignatures.insert(std::make_pair(CTy, 0));
+  if (!Ins.second) {
+    CU.addDIETypeSignature(RefDie, Ins.first->second);
     return;
   }
   
   bool TopLevelType = ScoutTypeUnitsUnderConstruction.empty();
   AddrPool.resetUsedFlag();
-  
-  auto OwnedUnit = make_unique<DwarfTypeUnit>(
-                                              InfoHolder.getUnits().size() +ScoutTypeUnitsUnderConstruction.size(), CU, Asm,
+ 
+  auto OwnedUnit = make_unique<DwarfTypeUnit>(CU, Asm,
                                               this, &InfoHolder, getDwoLineTable(CU));
   DwarfTypeUnit &NewTU = *OwnedUnit;
   DIE &UnitDie = NewTU.getUnitDie();
-  TU = &NewTU;
   ScoutTypeUnitsUnderConstruction.push_back(
                                        std::make_pair(std::move(OwnedUnit), CTy));
   
@@ -1982,7 +1980,9 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
   
   uint64_t Signature = makeTypeSignature(Identifier);
   NewTU.setTypeSignature(Signature);
-  
+  Ins.first->second = Signature;
+ 
+ 
   if (useSplitDwarf())
     NewTU.initSection(Asm->getObjFileLowering().getDwarfTypesDWOSection());
   else {
@@ -2005,7 +2005,7 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
       // This is pessimistic as some of these types might not be dependent on
       // the type that used an address.
       for (const auto &TU : TypeUnitsToAdd)
-        DwarfTypeUnits.erase(TU.second);
+        TypeSignatures.erase(TU.second);
       
       // Construct this type in the CU directly.
       // This is inefficient because all the dependent types will be rebuilt
@@ -2017,10 +2017,12 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
     
     // If the type wasn't dependent on fission addresses, finish adding the type
     // and all its dependent types.
-    for (auto &TU : TypeUnitsToAdd)
-      InfoHolder.addUnit(std::move(TU.first));
+    for (auto &TU : TypeUnitsToAdd) {
+      InfoHolder.computeSizeAndOffsetsForUnit(TU.first.get());
+      InfoHolder.emitUnit(TU.first.get(), useSplitDwarf());
+    }
   }
-  CU.addDIETypeSignature(RefDie, NewTU);
+  CU.addDIETypeSignature(RefDie, Signature);
 }
 
 // +==================================================================

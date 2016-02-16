@@ -57,12 +57,10 @@ find_path(QT5_DIR
     lib
     HINTS $ENV{SC_QT_DIR}
     PATHS
-    /usr
-    /usr/local
     /usr/local/Qt/5.4/clang_64/
+    /usr/local/Qt/5.5/clang_64/
     /usr/local/Qt/5.4/gcc_64/
-    /opt/
-    /opt/local
+    /usr/local/Qt/5.5/gcc_64/
     DOC "Path for QT cmake files."
     )
 
