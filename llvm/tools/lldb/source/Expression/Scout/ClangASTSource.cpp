@@ -59,6 +59,7 @@
 #include "lldb/Core/ModuleList.h"
 #include "Plugins/ExpressionParser/Clang/ASTDumper.h"
 #include "Plugins/ExpressionParser/Clang/ClangASTSource.h"
+#include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
@@ -169,7 +170,8 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
             const ModuleList &module_list = m_target->GetImages();
 
             bool exact_match = false;
-            module_list.FindTypes (null_sc, name, exact_match, UINT32_MAX, types);
+            llvm::DenseSet<SymbolFile *> searched_symbol_files;
+            module_list.FindTypes (null_sc, name, exact_match, UINT32_MAX, searched_symbol_files, types);
 
             for (uint32_t ti = 0, te = types.GetSize();
                  ti != te && !found;
@@ -308,7 +310,8 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
       const ModuleList &module_list = m_target->GetImages();
       
       bool exact_match = false;
-      module_list.FindTypes (null_sc, name, exact_match, UINT32_MAX, types);
+      llvm::DenseSet<SymbolFile *> searched_symbol_files;
+      module_list.FindTypes (null_sc, name, exact_match, UINT32_MAX, searched_symbol_files, types);
       
       for (uint32_t ti = 0, te = types.GetSize();
            ti != te && !found;

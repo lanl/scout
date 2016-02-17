@@ -1852,7 +1852,8 @@ LookupTypeInModule (CommandInterpreter &interpreter,
         SymbolContext sc;
 
         ConstString name(name_cstr);
-        num_matches = module->FindTypes(sc, name, name_is_fully_qualified, max_num_matches, type_list);
+        llvm::DenseSet<lldb_private::SymbolFile *> searched_symbol_files;
+        num_matches = module->FindTypes(sc, name, name_is_fully_qualified, max_num_matches, searched_symbol_files, type_list);
 
         if (num_matches)
         {
@@ -1905,7 +1906,8 @@ LookupTypeHere (CommandInterpreter &interpreter,
     bool name_is_fully_qualified = false;
 
     ConstString name(name_cstr);
-    num_matches = sym_ctx.module_sp->FindTypes(sym_ctx, name, name_is_fully_qualified, max_num_matches, type_list);
+    llvm::DenseSet<SymbolFile *> searched_symbol_files;
+    num_matches = sym_ctx.module_sp->FindTypes(sym_ctx, name, name_is_fully_qualified, max_num_matches, searched_symbol_files, type_list);
 
     if (num_matches)
     {
@@ -4083,11 +4085,11 @@ public:
             case eLookupTypeAddress:
                 if (m_options.m_addr != LLDB_INVALID_ADDRESS)
                 {
-                    if (LookupAddressInModule (m_interpreter, 
-                                               result.GetOutputStream(), 
-                                               module, 
-                                               eSymbolContextEverything | (m_options.m_verbose ? eSymbolContextVariable : 0),
-                                               m_options.m_addr, 
+                    if (LookupAddressInModule (m_interpreter,
+                                               result.GetOutputStream(),
+                                               module,
+                                               eSymbolContextEverything | (m_options.m_verbose ? static_cast<int>(eSymbolContextVariable) : 0),
+                                               m_options.m_addr,
                                                m_options.m_offset,
                                                m_options.m_verbose))
                     {

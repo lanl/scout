@@ -4645,15 +4645,9 @@ RNBRemote::HandlePacket_qHostInfo (const char *p)
     uint64_t major, minor, patch;
     if (DNBGetOSVersionNumbers (&major, &minor, &patch))
     {
-        strm << "osmajor:" << major << ";";
-        strm << "osminor:" << minor << ";";
-        strm << "ospatch:" << patch << ";";
-
-        strm << "version:" << major << "." << minor;
-        if (patch != 0)
-        {
+        strm << "os_version:" << major << "." << minor;
+        if (patch != UINT64_MAX)
             strm << "." << patch;
-        }
         strm << ";";
     }
 
@@ -5863,7 +5857,7 @@ RNBRemote::HandlePacket_qProcessInfo (const char *p)
                     DNBLogThreadedIf (LOG_RNB_PROC, "LC_VERSION_MIN_MACOSX -> 'ostype:macosx;'");
                     break;
 
-#if defined (TARGET_OS_TV) && TARGET_OS_TV == 1
+#if defined (LC_VERSION_MIN_TVOS)
                 case LC_VERSION_MIN_TVOS:
                     os_handled = true;
                     rep << "ostype:tvos;";
@@ -5871,7 +5865,7 @@ RNBRemote::HandlePacket_qProcessInfo (const char *p)
                     break;
 #endif
 
-#if defined (TARGET_OS_WATCH) && TARGET_OS_WATCH == 1
+#if defined (LC_VERSION_MIN_WATCHOS)
                 case LC_VERSION_MIN_WATCHOS:
                     os_handled = true;
                     rep << "ostype:watchos;";

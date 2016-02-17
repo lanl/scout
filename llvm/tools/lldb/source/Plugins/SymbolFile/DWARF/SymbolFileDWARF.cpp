@@ -1091,9 +1091,40 @@ SymbolFileDWARF::ParseImportedModules (const lldb_private::SymbolContext &sc, st
         if (ClangModulesDeclVendor::LanguageSupportsClangModules(sc.comp_unit->GetLanguage()))
         {
             UpdateExternalModuleListIfNeeded();
-            for (const auto &pair : m_external_type_modules)
+            
+            if (sc.comp_unit)
             {
-                imported_modules.push_back(pair.first);
+                const DWARFDIE die = dwarf_cu->GetCompileUnitDIEOnly();
+                
+                if (die)
+                {
+                    for (DWARFDIE child_die = die.GetFirstChild();
+                         child_die;
+                         child_die = child_die.GetSibling())
+                    {
+                        if (child_die.Tag() == DW_TAG_imported_declaration)
+                        {
+                            if (DWARFDIE module_die = child_die.GetReferencedDIE(DW_AT_import))
+                            {
+                                if (module_die.Tag() == DW_TAG_module)
+                                {
+                                    if (const char *name = module_die.GetAttributeValueAsString(DW_AT_name, nullptr))
+                                    {
+                                        ConstString const_name(name);
+                                        imported_modules.push_back(const_name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (const auto &pair : m_external_type_modules)
+                {
+                    imported_modules.push_back(pair.first);
+                }
             }
         }
     }
@@ -1592,6 +1623,8 @@ SymbolFileDWARF::HasForwardDeclForClangType (const CompilerType &compiler_type)
 bool
 SymbolFileDWARF::CompleteType (CompilerType &compiler_type)
 {
+    lldb_private::Mutex::Locker locker(GetObjectFile()->GetModule()->GetMutex());
+
     TypeSystem *type_system = compiler_type.GetTypeSystem();
     if (type_system)
     {
@@ -2971,9 +3004,20 @@ SymbolFileDWARF::FindTypes (const SymbolContext& sc,
                             const ConstString &name, 
                             const CompilerDeclContext *parent_decl_ctx, 
                             bool append, 
-                            uint32_t max_matches, 
+                            uint32_t max_matches,
+                            llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
                             TypeMap& types)
 {
+    // If we aren't appending the results to this list, then clear the list
+    if (!append)
+        types.Clear();
+
+    // Make sure we haven't already searched this SymbolFile before...
+    if (searched_symbol_files.count(this))
+        return 0;
+    else
+        searched_symbol_files.insert(this);
+
     DWARFDebugInfo* info = DebugInfo();
     if (info == NULL)
         return 0;
@@ -2995,10 +3039,6 @@ SymbolFileDWARF::FindTypes (const SymbolContext& sc,
                                                       name.GetCString(), append,
                                                       max_matches);
     }
-
-    // If we aren't appending the results to this list, then clear the list
-    if (!append)
-        types.Clear();
 
     if (!DeclContextMatchesThisSymbolFile(parent_decl_ctx))
         return 0;
@@ -3097,6 +3137,7 @@ SymbolFileDWARF::FindTypes (const SymbolContext& sc,
                                                                                  parent_decl_ctx,
                                                                                  append,
                                                                                  max_matches,
+                                                                                 searched_symbol_files,
                                                                                  types);
                     if (num_external_matches)
                         return num_external_matches;
@@ -3123,6 +3164,9 @@ SymbolFileDWARF::FindTypes (const std::vector<CompilerContext> &context,
     DIEArray die_offsets;
 
     ConstString name = context.back().name;
+
+    if (!name)
+        return 0;
 
     if (m_using_apple_tables)
     {
