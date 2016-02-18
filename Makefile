@@ -132,7 +132,7 @@ endif
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_INSTALL_PREFIX=$(build_dir) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
-               -DCMAKE_PREFIX_PATH="/usr/local/Qt/5.4/clang_64/;/usr/local/Qt/5.4/gcc_64/;/usr/local/Qt;$(SC_QT_DIR)"\
+               -DCMAKE_PREFIX_PATH="/usr/local/Qt/5.5/clang_64/;/usr/local/Qt/5.5/gcc_64/;/usr/local/Qt;$(SC_QT_DIR)"\
                $(SC_BUILD_CMAKE_FLAGS) \
                -DDEBUG_REPORT_URL="https://github.com/losalamos/scout"\
                -DCLANG_VENDOR_UTI="gov.lanl"\
