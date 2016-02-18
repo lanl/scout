@@ -180,7 +180,7 @@ IF(NOT CMAKE_SCC_COMPILER_ID_RUN)
 
 ENDIF(NOT CMAKE_SCC_COMPILER_ID_RUN)
 
-INCLUDE(${CMAKE_ROOT}/Modules/CMakeClDeps.cmake)
+#INCLUDE(${CMAKE_ROOT}/Modules/CMakeClDeps.cmake)
 INCLUDE(CMakeFindBinUtils)
 
 # configure all variables set in this file
